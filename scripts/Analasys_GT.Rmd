@@ -34,27 +34,22 @@ library(readxl)
 library(readr)
 library(rlist)
 library(phytools)
-get.dir <- function(folder) {
-  getwd() %>% 
-    str_split(pattern = "/") %>% 
-    unlist() %>%  
-    `[`(1:(length(.)-1)) %>% 
-    paste(collapse = "/") %>% 
-    paste0(., "/", folder)
-}
-d.dir <- get.dir("Data")
-r.dir <- get.dir("Results")
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
 ```
 
 Firstly, the PSI-BLAST hits are loaded. This is a quite time consuming process and the results are therefore written to the data folder, such that it is only run once and only loaded afterwards. After this the upset dataframe format is made. This also a **very** time consuming process, there same approach, run once and write and load afterwards. 
 
 Loading of data 
 ```{r}
-if (!any(list.files(d.dir) %in% paste0(d.dir, "/psiblast_uniq.tsv"))) {
-  psiblast_outputs <- list.files(paste0(d.dir, "/psiblast/"))
+if (!any(list.files(d("", raw=F)) %in% d("/psiblast_uniq.tsv", raw=F))) {
+  psiblast_outputs <- list.files(d("/psiblast/"))
   psiblast <- data.frame()
   for (q in psiblast_outputs) {
-    psi_path <- paste(d.dir, "/psiblast/", q, sep = "")
+    psi_path <- d(paste0("/psiblast/", q))
     psiblast <- rbind(
       psiblast,
       fread(
@@ -86,9 +81,9 @@ if (!any(list.files(d.dir) %in% paste0(d.dir, "/psiblast_uniq.tsv"))) {
   psiblast_uniq <- psiblast %>% 
     group_by(Query_label, Target_label) %>% 
     filter(E_value == min(E_value))
-  write_tsv(psiblast_uniq, file = paste0(d.dir, "/psiblast_uniq.tsv"))
+  write_tsv(psiblast_uniq, file = d("/psiblast_uniq.tsv", raw=F))
 } else (
-  psiblast_uniq <- read_tsv(paste0(d.dir, "/psiblast_uniq.tsv"))
+  psiblast_uniq <- read_tsv(d("/psiblast_uniq.tsv", raw=F))
 )
 ```
 
@@ -97,39 +92,19 @@ Defining function that are used several times
 ```{r}
 # Making dataframe formatted for UpSet plot
 get_upset_from_psiblast <- function(psiblast) {
-  psi_list <- split(psiblast, f = str_sub(psiblast$Target_label, 1, -7))
-  upset_df <- data.frame(matrix(ncol = length(unique(psiblast$Query_label)), 
-                                nrow = length(unique(psiblast$Target_label))
-                                )
-                         )
-  colnames(upset_df) <- unique(psiblast$Query_label)
-  rownames(upset_df) <- unique(psiblast$Target_label)
   genes <- unique(psiblast$Query_label)
-  for (i in names(psi_list)) {
-    df_temp <- psi_list[[i]] %>% as.data.frame()
-    for (j in unique(df_temp$Target_label)) {
-      uniqs <- subset(df_temp, Target_label == j)$Query_label %>% unique()
-      upset_df[j,]  <- c(genes %in% uniqs) %>% 
-        as.numeric()
-    }
-    print(paste(i, Sys.time(), sep=" - "))
-  }
+  psiblast <- as.data.table(psiblast)
+  upset_df <- psiblast[, list(Query_label, Target_label)][
+                            , (genes) := as.list(genes %in% Query_label), by = Target_label][
+                            , `:=`(Query_label = NULL, Target_label = NULL)]
+  upset_df <- upset_df*1
   return(upset_df)
-}
-check_upset_file <- function(psiblast, file) {
-  if (!(any(list.files(d.dir) %in% file))) {
-    upset_all <- get_upset_from_psiblast(psiblast)
-    write_tsv(upset_all, file = paste0(d.dir, "/", file))
-  } else (
-    upset_all <- read_tsv(paste0(d.dir, "/", file))
-  )
-  return(upset_all)
 }
 write_query_fasta_from_genes <- function(genes) {
   query_fasta <- list()
-  for (i in list.files(paste0(d.dir, "/Queries_final/"))) {
-    for (j in list.files(paste0(d.dir, "/Queries_final/", i))) {
-      path <- paste0(paste0(d.dir, "/Queries_final/", i, "/", j))
+  for (i in list.files(d("/Queries_final/"))) {
+    for (j in list.files(d(paste0("/Queries_final/", i)))) {
+      path <- d(paste0("/Queries_final/", i, "/", j))
       suppressWarnings(
         query_fasta <- append(query_fasta, read.fasta(path))
       )
@@ -139,7 +114,7 @@ write_query_fasta_from_genes <- function(genes) {
   write.fasta(
     query_fasta_top, 
     names = names(query_fasta_top), 
-    file.out = paste0(d.dir, "temp.fa"))
+    file.out = o("/temp.fa"))
 }
 ```
 
@@ -151,7 +126,7 @@ Evaluation of the top 10 hits. The top 10 most abundant hits are investigated, w
 n_hits <- table(psiblast_uniq$Query_label) %>% as.data.frame()
 psiblast_top <- psiblast_uniq %>% 
   subset(Query_label %in% n_hits[n_hits$Freq %in% tail(sort(n_hits$Freq), 10),"Var1"])
-upset_top <- check_upset_file(psiblast_top, "upset_top_genes.tsv") %>% as.data.frame()
+upset_top <- get_upset_from_psiblast(psiblast_top)
 
 
 UpSetR::upset(upset_top, nsets = ncol(upset_top),
@@ -170,13 +145,14 @@ An MSA and phylogenetic tree is made to investigate similarities between these q
 
 # MSA of sequences
 write_query_fasta_from_genes(colnames(upset_top))
-seqs <- readAAStringSet(paste0(d.dir,"temp.fa"))
+seqs <- readAAStringSet(o("/temp.fa"))
 MSA <- msa(
   seqs,  
   method = "Muscle", 
   order="aligned")
 
 # Printing MSA to .tex file
+setwd(o(""))
 msaPrettyPrint(
   MSA,
   file = "MSA_top10_Musc.tex",
@@ -186,7 +162,7 @@ msaPrettyPrint(
   askForOverwrite=FALSE, 
   verbose=FALSE,
 )
-
+setwd(s(""))
 # Phylogenetic tree
 MSA <- msaConvert(MSA, type="seqinr::alignment")
 dist.matrix <- dist.alignment(MSA, "identity") %>% as.matrix ()
@@ -205,8 +181,8 @@ Next the GT and synthase (SY) genes investigated
 
 ```{r}
 # Loading metadata of query genes
-query_metadata <- excel_sheets(paste0(d.dir,"/Query_figur.xlsx")) %>% 
-  sapply(function(X) read_xlsx(paste0(d.dir,"/Query_figur.xlsx"), sheet = X, skip = 1), USE.NAMES = T) %>% 
+query_metadata <- excel_sheets(d("/Query_figur.xlsx")) %>% 
+  sapply(function(X) read_xlsx(d("/Query_figur.xlsx"), sheet = X, skip = 1), USE.NAMES = T) %>% 
   lapply(as.data.frame) %>% 
   `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>% 
   rbindlist()
@@ -220,7 +196,7 @@ Firstly, an upset plot is made to evaluate to incommen hits of all the gt contai
 ```{r}
 # Subsetting psiblast to gt only
 psiblast_gt <- subset(psiblast_uniq, Query_label %in% query_metadata_GT$Genename)
-upset_gt <- check_upset_file(psiblast_gt, "upset_gt.tsv") %>% as.data.frame()
+upset_gt <- get_upset_from_psiblast(psiblast_gt)
 
 UpSetR::upset(upset_gt,  nsets = ncol(upset_gt),
   number.angles = 0, point.size = 1, line.size = 0.7, text.scale = 0.8,
@@ -239,13 +215,14 @@ write_query_fasta_from_genes(colnames(upset_gt))
 
 ```{r}
 # MSA of sequences
-seqs <- readAAStringSet(paste0(d.dir,"temp.fa"))
+seqs <- readAAStringSet(o("/temp.fa"))
 MSA <- msa(
   seqs,  
   method = "ClustalOmega", 
   order="aligned")
 
 # Printing MSA to .tex file
+setwd(o(""))
 msaPrettyPrint(
   MSA,
   file = "MSA_gt_ClusO.tex",
@@ -255,7 +232,7 @@ msaPrettyPrint(
   askForOverwrite=FALSE, 
   verbose=FALSE,
 )
-
+setwd(s(""))
 # Phylogenetic tree
 MSA <- msaConvert(MSA, type="seqinr::alignment")
 dist.matrix <- dist.alignment(MSA, "identity") %>% as.matrix ()
@@ -299,8 +276,9 @@ After this a function is made that perform the general analasys used so far (UpS
 ```{r}
 msa_tree_analasys_subtree_node <- function(tree, node, upset_df) {
   sub_tree <- get_subtree_from_node_label(tree, node)
+  upset_df <- as.data.frame(upset_df)
   upset_gt_n <- upset_df[,sub_tree$tip.label]
-  upset_gt_n <- upset_gt_n[!(rowSums(upset_gt_n) < 1),]
+  upset_gt_n <- upset_gt_n[rowSums(upset_gt_n) > 1,]
   # Upset plot
   print(UpSetR::upset(upset_gt_n,
     number.angles = 0, point.size = 1, line.size = 0.7, text.scale = 0.8,
@@ -313,7 +291,7 @@ msa_tree_analasys_subtree_node <- function(tree, node, upset_df) {
   # Subsetting and loading fasta files
   write_query_fasta_from_genes(colnames(upset_gt_n))
   suppressWarnings(
-    {myseqs <- readAAStringSet(paste0(d.dir, "temp.fa"), )}
+    {myseqs <- readAAStringSet(o("/temp.fa"), )}
   )
 
   MSA <- msaMuscle(myseqs)
@@ -355,4 +333,56 @@ msa_tree_analasys_subtree_node(tree, "53", upset_gt)
 
 
 ```
+
+
+
+
+
+Analasys of non GT and SY genes
+
+```{r}
+query_metadata_non_GT <- subset(query_metadata, !(Function %in% c("GT", "SY", "Prim_GT", "Contig")))
+
+
+# Subsetting psiblast to gt only
+psiblast_non_gt <- subset(psiblast_uniq, Query_label %in% query_metadata_non_GT$Genename)
+upset_non_gt <- get_upset_from_psiblast(psiblast_non_gt)
+function_order <- c("REG",   "Export", "Polymerization","PE" ,"ABC",  "PS", "MOD", "Hydrolase", "Lyase", "Branch")
+pdf(file = f("/upset_non_GT_SY_prim_GT.pdf"))
+UpSetR::upset(upset_non_gt,  nsets = ncol(upset_non_gt), nintersects = 150,
+  number.angles = -40, point.size = 0.5, line.size = 0.5, text.scale = 0.4,mb.ratio = c(0.45, 0.55),
+  sets = arrange(query_metadata_non_GT, factor(Function, levels=function_order))$Genename %>% `[`(. %in% colnames(upset_non_gt)) %>% unique(),
+  keep.order = TRUE, 
+  order.by = "freq",
+  mainbar.y.label = "Number of Incommon Hits",
+  sets.x.label = "Total Unique Hits",
+    set.metadata = list(
+    data = query_metadata_non_GT,
+    plots = list(
+      list(
+       type = "matrix_rows", 
+       column = "Function", 
+       colors = c(
+         ABC = '#dccede',
+         PE = '#C8DBC8',
+         Export = '#EDE9EB',
+         Branch = '#ffcb85',
+         MOD = '#deb887',
+         Hydrolase = '#fcdbbb', 
+         Lyase = '#FBDADA',  
+         GT = '#82ACB9',
+         Polymerization = '#a1c2a1',
+         Prim_GT = '#ECDED5',
+         SY = '#B3CFD0',
+         `NA` = '#FFFFFF',
+         PS = '#D68A8A', 
+         REG = '#f5f5c6'
+         ), 
+       alpha = 1)
+      )
+  )
+)
+dev.off()
+```
+
 

@@ -399,7 +399,7 @@ to_merge$ProkkaNO <- as.numeric(to_merge$ProkkaNO)
 # Subsetting fasta files for MSA
 fasta_export <- list()
 for (ID2 in unique(gene_c$ID2)){
-  d <- gene_c[gene_c$ID2==ID2,]
+  ID2 <- gene_c[gene_c$ID2==ID2,]
   fastafile <- read.fasta(
     file = d(paste0("/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa")),
     as.string=TRUE, 
@@ -408,21 +408,21 @@ for (ID2 in unique(gene_c$ID2)){
   fasta_name <- paste(
     #d$Phylum, 
     #paste("o.",d$Order, sep = ""),
-    paste("o:",d$Order, sep=""),
-    paste("g:",d$Genus, sep=""),
-    paste(substr(d$Target_label, 1,4),
-          str_split(d$ID2, pattern = "\\.")[[1]][2],
-          str_sub(d$Target_label, -5,-1), 
+    paste("o:",ID2$Order, sep=""),
+    paste("g:",ID2$Genus, sep=""),
+    paste(substr(ID2$Target_label, 1,4),
+          str_split(ID2$ID2, pattern = "\\.")[[1]][2],
+          str_sub(ID2$Target_label, -5,-1), 
           sep="."),
     sep=", "
   )
   # Saving the fasta_name to to_merge
-  if (any(d$Target_label %in% to_merge$Target_label)){
-    i <- d$Target_label %in% to_merge$Target_label
-    j <- to_merge$Target_label %in% d$Target_label
+  if (any(ID2$Target_label %in% to_merge$Target_label)){
+    i <- ID2$Target_label %in% to_merge$Target_label
+    j <- to_merge$Target_label %in% ID2$Target_label
     to_merge[j,"fasta_name"] <- fasta_name[i]
   }
-  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% d$Target_label]
+  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% ID2$Target_label]
 }
 # Adding query sequence
 fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(d( "Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
