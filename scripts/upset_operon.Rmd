@@ -1,0 +1,278 @@
+---
+title: "shared_operon_identifier"
+author: "SH"
+date: "29/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 8, 
+                      fig.height = 8, 
+                      echo = TRUE, 
+                      warning = FALSE, 
+                      error = TRUE, 
+                      message = FALSE)
+
+```
+```{r , eval=FALSE, include=FALSE}
+source("utilities.R")
+library(rstudioapi)
+knit_with_date(rstudioapi::getActiveDocumentContext()$path)
+```
+
+## Script Goal
+To compare which operons where identified by different query oreons. e.g. were any operons found by cellulose1 query also found by cellulose 2 query. 
+```{r}
+library(knitr)
+library(dplyr)
+library(rlist)
+library(readr)
+library(ggplot2)
+library(UpSetR)
+get.dir <- function(folder) {
+  getwd() %>% 
+    str_split(pattern = "/") %>% 
+    unlist() %>%  
+    `[`(1:(length(.)-1)) %>% 
+    paste(collapse = "/") %>% 
+    paste0(., "/", folder)
+}
+d.dir <- get.dir("Data")
+dir.create(d.dir, showWarnings = FALSE)
+o.dir <- get.dir("Output")
+dir.create(o.dir, showWarnings = FALSE)
+s.dir <- get.dir("Scripts")
+dir.create(s.dir, showWarnings = FALSE)
+setwd(s.dir)
+```
+
+Data from .tsv files is loaded into R. Each polysaccharide dataframe is loaded as an entry to a list. The list is then processed to extract ID, minProk, maxProk and ID2 (unique identifier) for each operon.
+```{r Loading data}
+# Load all psiblast subset data frames and saves as list
+get_subset_tsv <- function(dir_path=paste0(d.dir, "/psiblast_subset_tsv/")){
+  psi_subset_list <- list()
+  for (i in list.files(dir_path)) {
+    psiblast_file_name <- basename(tools::file_path_sans_ext(i))
+    psiblast_subset_path <- paste(dir_path, psiblast_file_name, ".tsv", sep="")
+    psiblast <- read_tsv(file = psiblast_subset_path) %>% 
+      `[`(!is.na(.$Percent_identity),) %>% 
+      as.data.frame()
+    psi_subset_list[[psiblast_file_name]] <- psiblast
+  }
+  psi_subset_list
+}
+psiblast_tsv_list <- get_subset_tsv()
+
+# Setting requirement of eps and nulO up to 3 genes
+all_eps <- psiblast_tsv_list$pnag_eps %>% 
+  group_by(ID2) %>% 
+  summarise(
+    N = length(ID2),
+    N_uniq_q = length(unique(Query_label)))
+psiblast_tsv_list$pnag_eps <-  subset(psiblast_tsv_list$pnag_eps, ID2 %in% subset(all_eps, N_uniq_q >2)$ID2)
+all_nulo <- psiblast_tsv_list$NulO_merged %>% 
+ group_by(ID2) %>% 
+ summarise(
+   N = length(ID2),
+   N_uniq_q = length(unique(Query_label)))
+psiblast_tsv_list$NulO_merged <-  subset(psiblast_tsv_list$NulO_merged, ID2 %in% subset(all_nulo, N_uniq_q >2)$ID2)
+
+# Making list with information about each operon
+operon_info <- list()
+for (i in names(psiblast_tsv_list)) {
+  operon_info[[i]] <- psiblast_tsv_list[[i]] %>% 
+    group_by(ID, OperonNO, ID2) %>% 
+    dplyr::summarise(minProk = min(as.numeric(ProkkaNO)),
+              maxProk = max(as.numeric(ProkkaNO)))
+}
+```
+
+# All vs. All
+All against all comparison of operons. Here all combinations of queries are compared in sets of two. e.g. cellulose1 is compared to cellulose2, then cellulose1 to alginate and so forth. Difference between this and UpSet plot is that ALL operons shared by the two queries compared is included. In other words, here the comparison does not consider potential overlap with queries other than the two in question. (In Upset, some might be in a third set with another query: 10 found by pnag_eps alone, 5 also found by pnag_ica, 3 also found by pnag_pga and 2 found by alle three -> here pnag_eps and pnag_ica comparison show (5+2)/(10+5+3+2)), whereas in UpSet, the set would show 5/(10+5+3+2).
+
+```{r All against all comparison of operons}
+# Function to pass to apply function later
+get_shared_operons <- function(query_vector){
+  if (query_vector[1] == query_vector[2]) {return(NULL)}
+  
+  compare_df <- merge(operon_info[[query_vector[1]]], 
+                      operon_info[[query_vector[2]]], 
+                      by=c("ID2"))
+  shared_operons <- compare_df %>% 
+     `[`(!.$minProk.x > .$maxProk.y | .$minProk.y > .$maxProk.x, )
+  
+  shared <- nrow(shared_operons)
+  if(shared == 0) return(NULL)
+  total_1 <- nrow(operon_info[[query_vector[1]]])
+  total_2 <- nrow(operon_info[[query_vector[2]]])
+  
+  result_list <- data.frame(
+      n_shared = shared,
+      query_1 = query_vector[1], 
+      n_tot_1 = total_1,
+      perc_shared_1 = round(shared/total_1*100, 1),
+      query_2 = query_vector[2], 
+      n_tot_2 = total_2,
+      perc_shared_2 = round(shared/total_2*100, 1)
+      )
+}
+
+combinations <- names(operon_info) %>% 
+  expand.grid(., .)
+all_shared_operon <-  apply(combinations, MARGIN = 1, FUN=get_shared_operons)
+names(all_shared_operon) <- apply(combinations, MARGIN = 1, paste, collapse=" & ")
+all_shared_operon <- all_shared_operon[lapply(all_shared_operon,length) > 0] %>% 
+  list.rbind()
+kable(all_shared_operon)
+```
+
+# UpSet plot
+UpSet plot require a dataframe where each row is an unique operon. The columns (representing queries) contain 1's and 0's, for whether or not the respective operon has been identified by this query. 
+
+```{r UpSet plot data prep}
+
+# Empty dataframe for UpSet plot
+upset_df <- matrix(nrow = 0, ncol = 3+length(names(operon_info))) %>% 
+  data.frame() %>% 
+  setNames(c("ID", "minProk", "maxProk", names(operon_info)))
+
+# Utility function that allows comparison of NA values
+compareNA <- function(v1,v2) {
+    same <- (v1 == v2) | (is.na(v1) & is.na(v2))
+    same[is.na(same)] <- FALSE
+    return(same)
+}
+
+for (query in names(operon_info)) {
+  # Subset to each query (polysaccharide)
+  subject_all <- as.data.frame(operon_info[[query]])
+  for (id in unique(subject_all$ID2)) {
+    # Subset to each unique operon
+    subject <- subject_all[subject_all$ID2==id,]
+    operon_added <- FALSE # Boolean to indicate whether is found
+    if (subject$ID %in% upset_df$ID){
+      # Check if ID found previously
+      i <- compareNA(upset_df$ID, id)
+      # Check if operon loci present
+      j <- !(
+             (upset_df[i, "minProk"] > subject$maxProk) | 
+             (upset_df[i, "maxProk"] < subject$minProk)
+            )
+      if (any(j)) {
+        # If the operon has previously been identified
+        upset_df[i, "maxProk"][j] <- max(subject$maxProk, upset_df[i, "maxProk"][j])
+        upset_df[i, "minProk"][j] <- min(subject$minProk, upset_df[i, "minProk"][j])
+        upset_df[i, query][j] <- 1
+        operon_added <- TRUE
+      }
+    }
+    if (!operon_added) {
+      # If previous has not been identified, add it to bottom row
+      to_bind <- matrix(nrow = 1, ncol = 3+length(names(operon_info))) %>% 
+        data.frame() %>% 
+        setNames(c("ID", "minProk", "maxProk", names(operon_info))) %>% 
+        mutate(ID = subject$ID,
+               minProk = subject$minProk,
+               maxProk = subject$maxProk,
+               "{query}" := 1)
+      upset_df <- rbind(upset_df, to_bind)
+    }
+  }
+}
+upset_df[is.na(upset_df)] <- 0
+
+# Removing ID, minProk and maxProk, as they are not relevant for upset plot
+upset_df <- upset_df[,c(1, 4:ncol(upset_df))]
+upset_df[,2:ncol(upset_df)] <- sapply(upset_df[,2:ncol(upset_df)], as.numeric)
+kable(head(upset_df))
+```
+
+Now the data has been prepared and is ready for upset plot.
+
+```{r UpSet plot with operons}
+# Renaming polysaccharides according agreed opun names
+colnames(upset_df) <- colnames(upset_df) %>%  dplyr::recode(
+   "cellulose1" = "Cellulose1*",
+   "cellulose2" = "Cellulose2*",
+   "curdlan" = "Curdlan*",
+   "pnag_eps" = "PNAG (eps)",
+   "pnag_ica" = "PNAG (ica)*",
+   "pnag_pga" = "PNAG (pga)*",
+   "HA_streptococcus" = "HA (has)*",
+   "HA_Pasteurella" = "HA (pmHAS)*",
+   "alginate" = "Alginate*",
+   "NulO_merged" = "NulO*",
+   "pel_merged" = "Pel*",
+   "psl" = "Psl",
+   "salecan" = "Salecan",
+   "succinoglycan" = "Succinoglycan",
+   "xanthan" = "Xanthan",
+   "gellan" = "Gellan",
+   "diutan" = "Diutan",
+)
+
+# Order in upet plot, bottom names comes first. 
+# Names are stupidly copied from above, which means changes in the above - 
+# names require changing the name here too.
+order_sets <- c(
+  "Cellulose1*", 
+  "Cellulose2*", 
+  "Curdlan*",
+  "Alginate*", 
+  "Pel*", 
+  "HA (has)*", 
+  "HA (pmHAS)*", 
+  "PNAG (ica)*", 
+  "PNAG (pga)*", 
+  "PNAG (eps)", 
+  "NulO*",  
+  "Psl",
+  "Salecan", 
+  "Succinoglycan", 
+  "Xanthan", 
+  "S88", 
+  "Diutan", 
+  "Gellan"
+)
+
+# Initiating metadata for upset plot
+sets <- names(upset_df)[2:length(names(upset_df))]
+
+# Setting colors for related groups
+metadata <- data.frame(sets = sets)
+metadata$group <- case_when(
+  metadata$sets %in% c("S88", "Diutan", "Gellan")                    ~ "Sphingans",
+  metadata$sets %in% c( "PNAG (ica)*", "PNAG (pga)*", "PNAG (eps)")    ~ "pnag",
+  metadata$sets %in% c("HA (has)*", "HA (pmHAS)*")     ~ "HA",
+  metadata$sets %in% c("Cellulose1*", "Cellulose2*")                   ~ "cellulose",
+  TRUE ~ "other"
+)
+
+pdf(paste0(d.dir, "/r_output/UpSet_operon_shared_by_queries_simple_nulO3_eps_3.pdf"), width = 8, height = 12)
+UpSetR::upset(
+  upset_df,
+  sets = order_sets, nintersects = 80,
+  order.by = "freq",
+  sets.x.label = "Total Hits",
+  keep.order = TRUE, 
+  point.size = 2,
+  mainbar.y.label = "Hits Shared by Set of Queries",
+  set.metadata = list(
+    data = metadata, 
+    plots = list(
+      list(
+       type = "matrix_rows", 
+       column = "Group", 
+       colors = c(
+         HA = "green", 
+         pnag = "navy", 
+         Sphingans = "purple", 
+         cellulose = "yellow",
+         other = "white"), 
+       alpha = 0.3)
+      )
+    )
+  )
+dev.off()
+```
+

@@ -1,0 +1,553 @@
+---
+title: "Cellulose Exploration"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+```{r}
+knitr::opts_chunk$set(warning = FALSE,
+                      error = TRUE,
+                      echo = TRUE,
+                      message = FALSE,
+                      fig.width = 15,
+                      fig.height = 15)
+```
+```{r , eval=FALSE, include=FALSE}
+source("utilities.R")
+library(rstudioapi)
+knit_with_date(rstudioapi::getActiveDocumentContext()$path)
+```
+
+
+
+## Goal:
+To explore the cellulose results. Perform MSA, evaluate by tree generation and compare phylogeny with MAG taxonomies
+
+## Date: 
+04/05 - 2021
+
+## Author:
+Soren Heidelbach
+
+There are two general problems with comparing bcsA: **1)** the bcsA genes are split in two operons. **2)** some operons contain bcsAB genes identified by bcsB, where bcsA part should be included in this analyses. 
+
+In relation to problem **1**. The bcsAB genes of `Skiv_18−Q3−R9−52_BATAC.396` and `Fred_18−Q3−R57−64_BAT3C.662` will not be included if data is subsetted to only bcsA hits, and require manual inspection to be included. Inclusion of the merged genes also require evaluation of where to cut the fasta sequence.\
+Firstly, a naive approach was attempted where the merged genes are included whole (Target_label are found for the two genes and included in gene subset).\
+Secondly, a MSA of bcsABs and bcsA's from the fasta file of the naive approach showed that it could be reasonable to remove amino acids after position 700, as there is very little information here. \
+In addition, there are two places where the rest of the bcsA's align to the bcsAB's. These regions have also been included (see below for outcuts of these regions). Including or removing the two regions have little to no effect on the placement in the tree.
+
+**Region 1 (position ~960)**
+
+`---GGIIVRVLLR-----`\
+`---FALALRDLLR-----`\
+`---FILAVRDLLR-----`\
+`---GGIIVRVLLR-----`\
+`------------------`\
+`---WKILTDNLLQ-----`\
+`---FQRVRQSLFN-----`\
+`GSQFTVRTGSIQRGNAIV` bcsAB\
+`---FQRIRQSLTN-----`\
+`---WRTRGEAAPE-----`\
+`---WRATRQRSCEG----`\
+`---WRNLGKGFTR-----`\
+`---WRNLGKGFTR-----`\
+`------------------`\
+`GVRFQAVRDGFPHGNAIV` bcsAB\
+`---FQRIRQSLTN-----`\
+
+**Region 2 (position ~1300)**
+
+`-------RGNEAPKPVA----APKRKSTGTARPALKS------`\
+`-------DNARKRRAEKSIQPLPDSPSSS--------------`\
+`-------DNARKRRAEKSAPATPATPVTRP-------------`\
+`-------RGNEAPKPVA----APKRKSTGTARPALKS------`\
+`-------------------------------------------`\
+`-------VAARTVRWRR----LPMR------------------`\
+`-------KLQSVTQHFVEKFESPASPTRLSSKVISQL------`\
+`RRLSDTLFEGASPEGVVQAIASPLDSRRNAVLVAVGDQQNFDF` bcsAB\
+`-------NLHSVAQHIVEKFESPASPTHLSSKVISRL------`\
+`-------RGAAPSNDDDKIVAIPTQAAAPTMAAEPDDQMEEDP`\
+`-------AGRRVIPASDSLVPVPSEEVSR--------------`\
+`-------QHQSLRGWLG----RPMI------------------`\
+`-------QHQSLRGWLG----RPMI------------------`\
+`-------------------------------------------`\
+`KRLKEFISGEASPGIVIQAFVSPLNPGRSVVAISGPTPQAFES` bcsAB\
+`-------NLHSVAQHIVEKFESPASPTHLSSKVISRL------`\
+
+
+
+
+```{r librariers}
+library(readr)      # More files reading functions e.g. read_tsv
+library(knitr)      # More Rmarkdown utilities
+library(dplyr)      # For piping and more
+library(seqinr)     # Reading and manipulating fasta files
+library(msa)        # MSA..
+library(data.table) # For the rbindlist function
+library(ape)        # Tree package
+library(stringr)    # nice string manipulation, e.g. str_sub
+library(ggtree)
+library(phytools)
+library(phangorn)
+
+get.dir <- function(folder) {
+  getwd() %>% 
+    str_split(pattern = "/") %>% 
+    unlist() %>%  
+    `[`(1:(length(.)-1)) %>% 
+    paste(collapse = "/") %>% 
+    paste0(., "/", folder)
+}
+d.dir <- get.dir("Data")
+dir.create(d.dir, showWarnings = FALSE)
+o.dir <- get.dir("Output")
+dir.create(o.dir, showWarnings = FALSE)
+s.dir <- get.dir("Scripts")
+dir.create(s.dir, showWarnings = FALSE)
+setwd(s.dir)
+```
+
+First the data from the psiblast_subset_tsv is loaded to a list, containing an entry for each query. `NA` values are removed, causion is advised here, as removing all rows with any `NA` removes actual entries with `max_abund` as `NA`. Using the Query_label column also entises problems, as `CB` (contig borderrs) are kept. `Percent_identity` is used as all actual psiblast hits have this value.
+
+```{r loading data}
+# Load all magstats
+magstats <- read_tsv(paste0(d.dir, "/magstats.tsv")) %>% 
+  as.data.frame()
+# Load all tsv files from psiblast:subset
+get_subset_tsv <- function(dir_path=paste0(d.dir, "/psiblast_subset_tsv/")){
+  psi_subset_list <- list()
+  for (i in list.files(dir_path)) {
+    psiblast_file_name <- tools::file_path_sans_ext(i)
+    psiblast_subset_path <- paste(dir_path, psiblast_file_name, ".tsv", sep="")
+    psiblast <- read_tsv(file = psiblast_subset_path) %>% 
+      `[`(!is.na(.$Percent_identity),) %>% 
+      as.data.frame()
+    psi_subset_list[[psiblast_file_name]] <- psiblast
+  }
+  psi_subset_list
+}
+psiblast_tsv_list <- get_subset_tsv()
+```
+
+The data is then subsetted to cellulose1, as all proposed functional hits are in this dataset and cellulose1 have split bcsA and bcsB, making subsetting these genes easier. The functional IDs have been manually selected as described in overleaf (looking in PDF report and blastin & interproscanning of ambigious hits)
+
+```{r functinoal ids}
+functional_ids <- c(
+  "Aved_18-Q3-R54-62_BAT3C.394",
+  "Bjer_18-Q3-R1-45_BATAC.458_A",
+  "Bjer_18-Q3-R1-45_BATAC.458_B",
+  "EsbW_18-Q3-R4-48_BAT3C.485", # Split bcsA
+  "EsbW_18-Q3-R4-48_BATAC.453",
+  "EsbW_18-Q3-R4-48_MAXAC.050",
+  "Fred_18-Q3-R57-64_BAT3C.662", # bcsAB gene annotated bcsB
+  "Hade_18-Q3-R52-61_BATAC.364",
+  "Hjor_18-Q3-R7-51_BAT3C.155",
+  "Kalu_18-Q3-R12-55_BAT3C.261",
+  "OdNE_18-Q3-R46-58_BATAC.187",
+  "Skiv_18-Q3-R9-52_BATAC.176", # Split bcsA
+  "Skiv_18-Q3-R9-52_BATAC.396", # bcsAB gene annotated as bcsB
+  "Skiv_18-Q3-R9-52_MAXAC.078_sub"
+)
+functional_hits <- psiblast_tsv_list[["cellulose1"]] %>%
+  subset(ID2 %in% functional_ids)
+
+gene <- functional_hits %>%
+  subset(grepl("bcsA", .$Query_label, fixed = TRUE) |
+    .$Target_label %in% c(
+      "Fred_18-Q3-R57-64_BAT3C.662_01773",
+      "Skiv_18-Q3-R9-52_BATAC.396_00856"
+    ))
+head(gene)
+
+```
+
+The now ready dataset is further modified to extract MIDAS taxonomy. This is done in the script below. It might seem confusing, but it is mainly a lot of applying function to entries in lists.
+
+```{r importing fasta files}
+# Adding taxonomy to separate columns
+gene <- cbind(
+  gene,
+  gene$MiDAS3_6Tax %>% 
+  strsplit(split = ",") %>% 
+  lapply(strsplit, split = ":") %>%
+  lapply(function(x) lapply(x, function(y) y[2])) %>% 
+  lapply(function(x) x %>% unlist %>% t %>% as.data.frame %>% setNames(c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species") ))%>% 
+  rbindlist()
+)
+gene$Species <- str_sub(gene$Species, 1, -2)
+head(gene)
+```
+
+From the ID values in the  dataframe fasta files are imported and sub setted to the relevant sequences. \
+The information needed for merging of the genes is also gathered here, by defining which genes are to be merged (Here just any genes on the same operon with more than one bcsA gene).
+
+```{r Importing and sorting fasta files}
+# Query sequence
+query <-  read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+  as.string=TRUE, 
+  set.attributes=FALSE
+  ) %>% 
+  `[`("bcsAI")
+# Merging splt bcsA genes 
+i <- gene$ID2 %in% names(table(gene$ID2)[table(gene$ID2) > 1])
+to_merge <- gene[i,] 
+to_merge$ProkkaNO <- as.numeric(to_merge$ProkkaNO)
+
+
+# Subsetting fasta files for MSA
+fasta_export <- list()
+for (f in unique(gene$ID2)){
+  d <- gene[gene$ID2==f,]
+  fastafile <- read.fasta(
+    file = paste(d.dir, "/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa", sep=""),
+    as.string=TRUE, 
+    set.attributes=FALSE
+  )
+  fasta_name <- paste(
+    #d$Phylum, 
+    #paste("o.",d$Order, sep = ""),
+    paste("o:",d$Order, sep=""),
+    paste("g:",d$Genus, sep=""),
+    paste(substr(d$Target_label, 1,4),
+          str_split(d$ID2, pattern = "\\.")[[1]][2],
+          str_sub(d$Target_label, -5,-1), 
+          sep="."),
+    sep=", "
+  )
+  # Saving the fasta_name to to_merge
+  if (any(d$Target_label %in% to_merge$Target_label)){
+    i <- d$Target_label %in% to_merge$Target_label
+    j <- to_merge$Target_label %in% d$Target_label
+    to_merge[j,"fasta_name"] <- fasta_name[i]
+  }
+  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% d$Target_label]
+}
+# Adding query sequence
+fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+  as.string=TRUE, 
+  set.attributes=FALSE
+  ) %>% 
+  `[`("bcsAI")
+```
+
+Merging of the genes are performed here. Mergin has to be concious about strand direction, therefore the to_merge dataframe is reordered when the strand direction is `-`. 
+
+```{r}
+for (i in unique(to_merge$ID2)) {
+  tm_sub <- subset(to_merge, ID2 == i)
+  
+  # Checking strand direction
+  if ("-" %in% tm_sub$strand) setorder(tm_sub, -ProkkaNO)
+
+  # New name of the fasta sequence
+  fasta_name <- paste(
+    str_sub(tm_sub$fasta_name[1], 1, -7),
+    " (merged)",
+    str_sub(tm_sub$fasta_name[1], -6, -1),
+    sep=""
+  )
+  print(fasta_export[tm_sub$fasta_name])
+  print(lapply(fasta_export[tm_sub$fasta_name], nchar))
+  # Adding the new faste sequence
+  fasta_export[fasta_name] <- paste(fasta_export[tm_sub$fasta_name], collapse = "")
+
+  # Removing split genes from list
+  fasta_export <- fasta_export[!(names(fasta_export) %in% tm_sub$fasta_name)]
+}
+
+```
+
+After handling the merging of split genes, it is now time to split the merged genes :). The genes are split by selection the ranges of the gene that is to be kept. (Ranges was gotten from an MSA in MEGAX, where the index can be displayed w/o gaps in the MSA)
+
+```{r}
+names(fasta_export) <- str_sub(names(fasta_export), 1, -7)
+# Splitting bcsAB genes
+i <- grepl(".396", names(fasta_export))
+fasta_export[i] <- paste(
+                    substr(fasta_export[i], 1, 701),
+                    substr(fasta_export[i], 952, 961),
+                    substr(fasta_export[i], 1322, 1351),
+                    sep="")
+names(fasta_export)[i] <-  paste(names(fasta_export[i]), "(split)", sep=" ")
+i <- grepl(".662", names(fasta_export))
+fasta_export[i] <- paste(
+                    substr(fasta_export[i], 1, 699),
+                    substr(fasta_export[i], 962, 971),
+                    substr(fasta_export[i], 1337, 1366),
+                    sep="")
+names(fasta_export)[i] <-  paste(names(fasta_export[i]), "(split)", sep=" ")
+```
+
+The now complete fasta sequences are written to a file to later be imported again or analysed in a seperate program
+
+```{r}
+write.fasta(fasta_export, names=names(fasta_export), file.out = paste0(d.dir, "/temp.fa"))
+```
+
+MSA is performed here in R.\
+bcsA have functional amino acids at positions:\
+405, 409\
+540, 550\
+748, 758\
+775, 785\
+in the MSA
+
+```{r}
+mySeqs <- readAAStringSet(paste0(d.dir,"/temp.fa"))
+MSA <- msa(
+  mySeqs,  
+  method = "ClustalOmega", 
+  order="aligned")
+
+# The subset of the MSA to be displayed
+colM <- IRanges(start=663, end=668)
+
+
+# Comment out 'y = colM' if no subsetting is wanted
+setwd(o.dir)
+msaPrettyPrint(MSA, output="tex", showNames="left",file = "MSA_bcsA_FNVTAK.tex",
+           showLogo="top", askForOverwrite=FALSE, verbose=FALSE,
+           y = colM
+)
+setwd(d.dir)
+
+MSA1 <- msaConvert(MSA, type="seqinr::alignment")
+d1 <- dist.alignment(MSA1, "identity") %>% as.matrix ()
+
+MSA2 <- phangorn::as.phyDat(MSA)
+d2 <- dist.ml(MSA2, model = "JC69", exclude = "none")
+
+tree <- njs(d1)
+#tree <- root(tree, node = 19)
+tree <- midpoint.root(tree)
+#tree <- ladderize(tree, right = FALSE)
+get_orders_from_phylum <- function(phylum) {
+  orders <- gene$Order[gene$Phylum %in% phylum] %>% 
+  unique() %>% 
+  paste(.,collapse="|") %>% 
+  grepl(tree$tip.label)
+  return(orders)
+}
+col_vec1 <- ifelse(get_orders_from_phylum("Proteobacteria"), "#135a6a", NA)
+col_vec2 <- ifelse(get_orders_from_phylum("Acidobacteria"),  "#6a2313", NA)
+col_vec1[is.na(col_vec1)] <- col_vec2[is.na(col_vec1)]
+col_vec1[is.na(col_vec1)] <- "black"
+font_vec <- ifelse(grepl("Komagataei", tree$tip.label), 4, 3)
+
+pdf(file = paste0(o.dir, "/bcsA_tree.pdf"), width = 9, height = 5)
+plot.phylo(tree, srt=0, adj=0, show.node.label = T,
+           tip.color= col_vec1, 
+           font = font_vec,
+           no.margin = T,
+           x.lim = c(0,1.6),
+           align.tip.label = 3)
+dev.off()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# bcsC
+
+**The scripts is almost the exact same as the analysis for bcsA, but there is no gene splitting** and in one operon the bcsC genes have not been aded, therefore they are manually added to the fasta sequence list.
+
+```{r}
+gene_c <- functional_hits %>%
+  subset(grepl("bcsC", .$Query_label, fixed = TRUE) |
+    .$Target_label %in% c(
+    "Kalu_18-Q3-R12-55_BAT3C.261_03039",
+    "Kalu_18-Q3-R12-55_BAT3C.261_03038"
+      ))
+head(gene_c)
+
+```
+```{r}
+# Adding taxonomy to separate columns
+gene_c <- cbind(
+  gene_c,
+  gene_c$MiDAS3_6Tax %>% 
+  strsplit(split = ",") %>% 
+  lapply(strsplit, split = ":") %>%
+  lapply(function(x) lapply(x, function(y) y[2])) %>% 
+  lapply(function(x) x %>% unlist %>% t %>% as.data.frame %>% setNames(c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species") ))%>% 
+  rbindlist()
+)
+gene_c$Species <- str_sub(gene_c$Species, 1, -2)
+head(gene_c)
+```
+
+
+```{r}
+# Query sequence
+query <-  read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+  as.string=TRUE, 
+  set.attributes=FALSE
+  ) %>% 
+  `[`("bcsCI")
+# Merging splt bcsA gene_cs 
+i <- gene_c$ID2 %in% names(table(gene_c$ID2)[table(gene_c$ID2) > 1])
+to_merge <- gene_c[i,] 
+to_merge$ProkkaNO <- as.numeric(to_merge$ProkkaNO)
+
+
+# Subsetting fasta files for MSA
+fasta_export <- list()
+for (f in unique(gene_c$ID2)){
+  d <- gene_c[gene_c$ID2==f,]
+  fastafile <- read.fasta(
+    file = paste(d.dir, "/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa", sep=""),
+    as.string=TRUE, 
+    set.attributes=FALSE
+  )
+  fasta_name <- paste(
+    #d$Phylum, 
+    #paste("o.",d$Order, sep = ""),
+    paste("o:",d$Order, sep=""),
+    paste("g:",d$Genus, sep=""),
+    paste(substr(d$Target_label, 1,4),
+          str_split(d$ID2, pattern = "\\.")[[1]][2],
+          str_sub(d$Target_label, -5,-1), 
+          sep="."),
+    sep=", "
+  )
+  # Saving the fasta_name to to_merge
+  if (any(d$Target_label %in% to_merge$Target_label)){
+    i <- d$Target_label %in% to_merge$Target_label
+    j <- to_merge$Target_label %in% d$Target_label
+    to_merge[j,"fasta_name"] <- fasta_name[i]
+  }
+  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% d$Target_label]
+}
+# Adding query sequence
+fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(paste0(d.dir, "Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+  as.string=TRUE, 
+  set.attributes=FALSE
+  ) %>% 
+  `[`("bcsCI")
+
+fasta_export["o:Solibacterales, g:Bryobacter, Kalu.261 (merged).RRRRR"] <- paste0(
+  read.fasta(
+    paste0(d.dir, "/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
+    as.string=TRUE, 
+    set.attributes=FALSE
+    ) %>% 
+    `[`("Kalu_18-Q3-R12-55_BAT3C.261_03039") %>% 
+    `[[`(1),
+  read.fasta(
+    paste0(d.dir, "/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
+    as.string=TRUE, 
+    set.attributes=FALSE
+    ) %>% 
+    `[`("Kalu_18-Q3-R12-55_BAT3C.261_03038") %>% 
+    `[[`(1)
+)
+```
+
+
+```{r}
+for (i in unique(to_merge$ID2)) {
+  tm_sub <- subset(to_merge, ID2 == i)
+  
+  # Checking strand direction
+  if ("-" %in% tm_sub$strand) setorder(tm_sub, -ProkkaNO)
+
+  # New name of the fasta sequence
+  fasta_name <- paste(
+    str_sub(tm_sub$fasta_name[1], 1, -7),
+    " (merged)",
+    str_sub(tm_sub$fasta_name[1], -6, -1),
+    sep=""
+  )
+  
+  # Adding the new faste sequence
+  fasta_export[fasta_name] <- paste(fasta_export[tm_sub$fasta_name], collapse = "")
+
+  # Removing split genes from list
+  fasta_export <- fasta_export[!(names(fasta_export) %in% tm_sub$fasta_name)]
+}
+names(fasta_export) <- str_sub(names(fasta_export), 1, -7)
+```
+
+
+```{r}
+write.fasta(fasta_export, names=names(fasta_export), file.out = paste0(d.dir, "/temp.fa"))
+```
+
+
+```{r}
+mySeqs <- readAAStringSet(paste0(d.dir,"/temp.fa"))
+MSA <- msa(
+  mySeqs,  
+  method = "ClustalOmega", 
+  order="aligned")
+
+# MSA of bcsC genes
+colM <- IRanges(start=338, end=342)
+setwd(o.dir)
+msaPrettyPrint(
+  MSA, 
+  file = "MSA_bcsC.tex",
+  output="tex", 
+  showNames="left",
+  showLogo="top", 
+  askForOverwrite=FALSE, 
+  verbose=FALSE,
+  #y = colM
+)
+setwd(s.dir)
+
+# MSA type 1
+MSA1 <- msaConvert(MSA, type="seqinr::alignment")
+d1 <- dist.alignment(MSA1, "identity") %>% as.matrix ()
+
+# MSA type 2
+MSA2 <- phangorn::as.phyDat(MSA)
+d2 <- dist.ml(MSA2, model = "JC69", exclude = "none")
+
+# tree generation
+tree <- njs(d1)
+#tree <- root(tree,node =  16)
+#tree <- ladderize(tree, right = FALSE)
+tree <- midpoint.root(tree)
+# writing font and color information to vectors
+font_vec <- ifelse(grepl("Komagataei", tree$tip.label), 4, 3)
+get_orders_from_phylum <- function(phylum) {
+  orders <- gene$Order[gene$Phylum %in% phylum] %>% 
+  unique() %>% 
+  paste(.,collapse="|") %>% 
+  grepl(tree$tip.label)
+  return(orders)
+}
+col_vec1 <- ifelse(get_orders_from_phylum("Proteobacteria"), "#135a6a", NA)
+col_vec2 <- ifelse(get_orders_from_phylum("Acidobacteria"),  "#6a2313", NA)
+col_vec1[is.na(col_vec1)] <- col_vec2[is.na(col_vec1)]
+col_vec1[is.na(col_vec1)] <- "black"
+
+
+pdf(file = paste0(o.dir, "/bcsC_tree.pdf"), width = 9, height = 5)
+plot.phylo(tree, srt=0, adj=0, show.node.label = T,
+           tip.color= col_vec1, 
+           font = font_vec,
+           no.margin = T,
+           x.lim = c(0,1.6),
+           align.tip.label = 3)
+dev.off()
+
+```

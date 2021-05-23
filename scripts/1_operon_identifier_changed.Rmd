@@ -1,0 +1,161 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+knitr::opts_knit$set(root.dir = "path/to/working/directionary")
+knitr::opts_chunk$set(warning = FALSE,
+                      error = TRUE,
+                      echo = FALSE)
+```
+```{r , eval=FALSE, include=FALSE}
+source("utilities.R")
+library(rstudioapi)
+knit_with_date(rstudioapi::getActiveDocumentContext()$path)
+```
+
+```{r}
+library(dplyr)
+library(stringr)
+# Setting up enviroment for work folder
+get.sibling.path <- function(folder) {
+  getwd() %>% 
+    str_split(pattern = "/") %>% 
+    unlist() %>%  
+    `[`(1:(length(.)-1)) %>% 
+    paste(collapse = "/") %>% 
+    paste0(., "/", folder)
+}
+d.dir <- get.sibling.path("Data")
+d <- function(x){paste(d.dir, x, sep="/")}
+dir.create(d.dir, showWarnings = FALSE)
+o.dir <- get.sibling.path("Output")
+o <- function(x){paste(o.dir, x, sep="/")}
+dir.create(o.dir, showWarnings = FALSE)
+s.dir <- get.sibling.path("Scripts")
+s <- function(x){paste(s.dir, x, sep="/")}
+dir.create(s.dir, showWarnings = FALSE)
+setwd(s.dir)
+```
+
+## Goal: Do the operon identification data.table notation
+## Date: 23 maj 2021
+## Author: Soren H
+
+```{r}
+library(data.table)
+library(readr)
+library(tidyverse)
+```
+
+
+
+```{r}
+filename_psiblast <- "cellulose1"
+perc_id = 20
+max_dist_prok = 5
+max_dist_gene = 2000
+min_genes = 3
+```
+
+
+
+```{r}
+magstats <- fread(d("magstats.tsv"), sep = "\t")
+
+gff <- fread(d("gff.tsv"), sep="\t") %>% 
+  mutate(Target_label = paste(ID, ProkkaNO, sep="_"))
+
+psiblast <- fread(
+  file = d(paste0("/psiblast/", filename_psiblast, ".txt")), 
+  header = FALSE, fill=TRUE, sep = "\t", 
+  col.names = c("Query_label", "Target_label","Percent_identity","align_length","mismatch", "gap_opens","start_query", "end_query", "start_target", "end_target","E_value", "Bit score")
+) 
+psiblast <- psiblast %>% 
+  subset(!is.na(E_value)) %>%   
+  separate(Target_label, c("ID", "ProkkaNO"), sep = -5, remove = FALSE, extra = "merge") %>%
+  mutate(ID = str_sub(ID, start = 1, end = -2)) %>%
+  filter(Percent_identity > perc_id) %>% 
+  group_by(Target_label) %>% 
+  filter(`Bit score` == max(`Bit score`)) %>% 
+  filter(!duplicated(Target_label)) %>%   
+  left_join(gff, by = c("Target_label", "ProkkaNO", "ID"), keep = FALSE) %>%
+  left_join(magstats, by = "ID", keep = FALSE) %>% 
+  mutate(ProkkaINT = as.numeric(ProkkaNO)) %>% 
+  as.data.table() %>% 
+  arrange(Target_label, ProkkaINT)
+rm(gff, magstats)
+```
+
+
+
+```{r}
+
+# [
+#   Calculate distance to anterior and posterior hit for both prokka and nucleotides
+# ][
+#   Remove all hits with no prokka/gene distance below threshhold
+# ][
+#   Search for operon start genes (Only prokka/gene distance to preceding hit is within threshold)
+# ]
+psiblast <- psiblast[, `:=`(
+                   ante_prok = replace_na(ProkkaINT - shift(ProkkaINT, 1), 10000),
+                   post_prok = replace_na(shift(ProkkaINT, -1) - ProkkaINT, 10000),
+                   ante_gene = replace_na(start - shift(end, 1), 10000),
+                   post_gene = replace_na(shift(start, -1) - end, 10000)
+                 )
+                 , by=.(seqname, ID)
+                 ][
+                   ante_prok < max_dist_prok | post_prok < max_dist_prok & ante_gene < max_dist_gene | post_gene < max_dist_gene
+                 ][,
+                   operon_place := case_when(
+                     (post_prok < max_dist_prok & post_gene < max_dist_gene) & 
+                     !(ante_prok < max_dist_prok & ante_gene < max_dist_gene) ~ "start",
+                     TRUE ~ ".")
+                 ]
+
+# Assigning unique number to each operon
+psiblast[, "operon"] <- 0
+psiblast[, "operon"] <- as.numeric(psiblast$operon)
+for (i  in 1:nrow(psiblast)) {
+  if (psiblast[i,]$operon_place == "start"){
+    psiblast[i, "operon"] <- max(psiblast[, "operon"], na.rm = TRUE) + 1
+  }
+  psiblast[i,"operon"] <- max(psiblast[, "operon"], na.rm = TRUE)
+}
+psiblast <- psiblast %>% 
+  group_by(operon) %>% 
+  filter(n() >= min_genes)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
