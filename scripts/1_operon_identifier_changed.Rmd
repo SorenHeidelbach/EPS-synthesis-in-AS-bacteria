@@ -20,24 +20,12 @@ knit_with_date(rstudioapi::getActiveDocumentContext()$path)
 library(dplyr)
 library(stringr)
 # Setting up enviroment for work folder
-get.sibling.path <- function(folder) {
-  getwd() %>% 
-    str_split(pattern = "/") %>% 
-    unlist() %>%  
-    `[`(1:(length(.)-1)) %>% 
-    paste(collapse = "/") %>% 
-    paste0(., "/", folder)
-}
-d.dir <- get.sibling.path("Data")
-d <- function(x){paste(d.dir, x, sep="/")}
-dir.create(d.dir, showWarnings = FALSE)
-o.dir <- get.sibling.path("Output")
-o <- function(x){paste(o.dir, x, sep="/")}
-dir.create(o.dir, showWarnings = FALSE)
-s.dir <- get.sibling.path("Scripts")
-s <- function(x){paste(s.dir, x, sep="/")}
-dir.create(s.dir, showWarnings = FALSE)
-setwd(s.dir)
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
+
 ```
 
 ## Goal: Do the operon identification data.table notation
@@ -65,7 +53,7 @@ min_genes = 3
 ```{r}
 magstats <- fread(d("magstats.tsv"), sep = "\t")
 
-gff <- fread(d("gff.tsv"), sep="\t") %>% 
+gff <- fread(d("gff.tsv")) %>% 
   mutate(Target_label = paste(ID, ProkkaNO, sep="_"))
 
 psiblast <- fread(

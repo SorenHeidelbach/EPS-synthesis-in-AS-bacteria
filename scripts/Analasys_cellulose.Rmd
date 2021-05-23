@@ -91,32 +91,21 @@ library(stringr)    # nice string manipulation, e.g. str_sub
 library(ggtree)
 library(phytools)
 library(phangorn)
-
-get.dir <- function(folder) {
-  getwd() %>% 
-    str_split(pattern = "/") %>% 
-    unlist() %>%  
-    `[`(1:(length(.)-1)) %>% 
-    paste(collapse = "/") %>% 
-    paste0(., "/", folder)
-}
-d.dir <- get.dir("Data")
-dir.create(d.dir, showWarnings = FALSE)
-o.dir <- get.dir("Output")
-dir.create(o.dir, showWarnings = FALSE)
-s.dir <- get.dir("Scripts")
-dir.create(s.dir, showWarnings = FALSE)
-setwd(s.dir)
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
 ```
 
 First the data from the psiblast_subset_tsv is loaded to a list, containing an entry for each query. `NA` values are removed, causion is advised here, as removing all rows with any `NA` removes actual entries with `max_abund` as `NA`. Using the Query_label column also entises problems, as `CB` (contig borderrs) are kept. `Percent_identity` is used as all actual psiblast hits have this value.
 
 ```{r loading data}
 # Load all magstats
-magstats <- read_tsv(paste0(d.dir, "/magstats.tsv")) %>% 
+magstats <- read_tsv(d("/magstats.tsv")) %>% 
   as.data.frame()
 # Load all tsv files from psiblast:subset
-get_subset_tsv <- function(dir_path=paste0(d.dir, "/psiblast_subset_tsv/")){
+get_subset_tsv <- function(dir_path=d("/psiblast_subset_tsv/", raw=F)){
   psi_subset_list <- list()
   for (i in list.files(dir_path)) {
     psiblast_file_name <- tools::file_path_sans_ext(i)
@@ -185,7 +174,7 @@ The information needed for merging of the genes is also gathered here, by defini
 
 ```{r Importing and sorting fasta files}
 # Query sequence
-query <-  read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+query <-  read.fasta(d("/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
   as.string=TRUE, 
   set.attributes=FALSE
   ) %>% 
@@ -198,34 +187,34 @@ to_merge$ProkkaNO <- as.numeric(to_merge$ProkkaNO)
 
 # Subsetting fasta files for MSA
 fasta_export <- list()
-for (f in unique(gene$ID2)){
-  d <- gene[gene$ID2==f,]
+for (ID2 in unique(gene$ID2)){
+  df <- gene[gene$ID2==ID2,]
   fastafile <- read.fasta(
-    file = paste(d.dir, "/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa", sep=""),
+    file = d(paste0("/MGP1000_HQMAG1083_prot_db_split/", df$ID[1], ".faa")),
     as.string=TRUE, 
     set.attributes=FALSE
   )
   fasta_name <- paste(
     #d$Phylum, 
     #paste("o.",d$Order, sep = ""),
-    paste("o:",d$Order, sep=""),
-    paste("g:",d$Genus, sep=""),
-    paste(substr(d$Target_label, 1,4),
-          str_split(d$ID2, pattern = "\\.")[[1]][2],
-          str_sub(d$Target_label, -5,-1), 
+    paste("o:",df$Order, sep=""),
+    paste("g:",df$Genus, sep=""),
+    paste(substr(df$Target_label, 1,4),
+          str_split(df$ID2, pattern = "\\.")[[1]][2],
+          str_sub(df$Target_label, -5,-1), 
           sep="."),
     sep=", "
   )
   # Saving the fasta_name to to_merge
-  if (any(d$Target_label %in% to_merge$Target_label)){
-    i <- d$Target_label %in% to_merge$Target_label
-    j <- to_merge$Target_label %in% d$Target_label
+  if (any(df$Target_label %in% to_merge$Target_label)){
+    i <- df$Target_label %in% to_merge$Target_label
+    j <- to_merge$Target_label %in% df$Target_label
     to_merge[j,"fasta_name"] <- fasta_name[i]
   }
-  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% d$Target_label]
+  fasta_export[fasta_name] <- fastafile[names(fastafile) %in% df$Target_label]
 }
 # Adding query sequence
-fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(d( "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
   as.string=TRUE, 
   set.attributes=FALSE
   ) %>% 
@@ -283,7 +272,7 @@ names(fasta_export)[i] <-  paste(names(fasta_export[i]), "(split)", sep=" ")
 The now complete fasta sequences are written to a file to later be imported again or analysed in a seperate program
 
 ```{r}
-write.fasta(fasta_export, names=names(fasta_export), file.out = paste0(d.dir, "/temp.fa"))
+write.fasta(fasta_export, names=names(fasta_export), file.out = o("/temp.fa"))
 ```
 
 MSA is performed here in R.\
@@ -295,7 +284,7 @@ bcsA have functional amino acids at positions:\
 in the MSA
 
 ```{r}
-mySeqs <- readAAStringSet(paste0(d.dir,"/temp.fa"))
+mySeqs <- readAAStringSet(o("/temp.fa"))
 MSA <- msa(
   mySeqs,  
   method = "ClustalOmega", 
@@ -306,12 +295,12 @@ colM <- IRanges(start=663, end=668)
 
 
 # Comment out 'y = colM' if no subsetting is wanted
-setwd(o.dir)
+setwd(o(""))
 msaPrettyPrint(MSA, output="tex", showNames="left",file = "MSA_bcsA_FNVTAK.tex",
            showLogo="top", askForOverwrite=FALSE, verbose=FALSE,
            y = colM
 )
-setwd(d.dir)
+setwd(d(""))
 
 MSA1 <- msaConvert(MSA, type="seqinr::alignment")
 d1 <- dist.alignment(MSA1, "identity") %>% as.matrix ()
@@ -336,7 +325,7 @@ col_vec1[is.na(col_vec1)] <- col_vec2[is.na(col_vec1)]
 col_vec1[is.na(col_vec1)] <- "black"
 font_vec <- ifelse(grepl("Komagataei", tree$tip.label), 4, 3)
 
-pdf(file = paste0(o.dir, "/bcsA_tree.pdf"), width = 9, height = 5)
+pdf(file = f("/bcsA_tree.pdf"), width = 9, height = 5)
 plot.phylo(tree, srt=0, adj=0, show.node.label = T,
            tip.color= col_vec1, 
            font = font_vec,
@@ -396,7 +385,7 @@ head(gene_c)
 
 ```{r}
 # Query sequence
-query <-  read.fasta(paste0(d.dir, "/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+query <-  read.fasta(d("/Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
   as.string=TRUE, 
   set.attributes=FALSE
   ) %>% 
@@ -409,10 +398,10 @@ to_merge$ProkkaNO <- as.numeric(to_merge$ProkkaNO)
 
 # Subsetting fasta files for MSA
 fasta_export <- list()
-for (f in unique(gene_c$ID2)){
-  d <- gene_c[gene_c$ID2==f,]
+for (ID2 in unique(gene_c$ID2)){
+  d <- gene_c[gene_c$ID2==ID2,]
   fastafile <- read.fasta(
-    file = paste(d.dir, "/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa", sep=""),
+    file = d(paste0("/MGP1000_HQMAG1083_prot_db_split/", d$ID[1], ".faa")),
     as.string=TRUE, 
     set.attributes=FALSE
   )
@@ -436,7 +425,7 @@ for (f in unique(gene_c$ID2)){
   fasta_export[fasta_name] <- fastafile[names(fastafile) %in% d$Target_label]
 }
 # Adding query sequence
-fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(paste0(d.dir, "Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
+fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fasta(d( "Queries_final/Cellulose/Cel_operon1_Kxylinus.fasta"),
   as.string=TRUE, 
   set.attributes=FALSE
   ) %>% 
@@ -444,14 +433,14 @@ fasta_export["o:Rhodospirillales, g:Komagataeibacter, QUERY.RRRRR"] <- read.fast
 
 fasta_export["o:Solibacterales, g:Bryobacter, Kalu.261 (merged).RRRRR"] <- paste0(
   read.fasta(
-    paste0(d.dir, "/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
+    d("/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
     as.string=TRUE, 
     set.attributes=FALSE
     ) %>% 
     `[`("Kalu_18-Q3-R12-55_BAT3C.261_03039") %>% 
     `[[`(1),
   read.fasta(
-    paste0(d.dir, "/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
+    d("/MGP1000_HQMAG1083_prot_db_split/Kalu_18-Q3-R12-55_BAT3C.261.faa"),
     as.string=TRUE, 
     set.attributes=FALSE
     ) %>% 
@@ -487,12 +476,12 @@ names(fasta_export) <- str_sub(names(fasta_export), 1, -7)
 
 
 ```{r}
-write.fasta(fasta_export, names=names(fasta_export), file.out = paste0(d.dir, "/temp.fa"))
+write.fasta(fasta_export, names=names(fasta_export), file.out = o("/temp.fa"))
 ```
 
 
 ```{r}
-mySeqs <- readAAStringSet(paste0(d.dir,"/temp.fa"))
+mySeqs <- readAAStringSet(o("/temp.fa"))
 MSA <- msa(
   mySeqs,  
   method = "ClustalOmega", 
@@ -500,7 +489,7 @@ MSA <- msa(
 
 # MSA of bcsC genes
 colM <- IRanges(start=338, end=342)
-setwd(o.dir)
+setwd(o(""))
 msaPrettyPrint(
   MSA, 
   file = "MSA_bcsC.tex",
@@ -511,7 +500,7 @@ msaPrettyPrint(
   verbose=FALSE,
   #y = colM
 )
-setwd(s.dir)
+setwd(s(""))
 
 # MSA type 1
 MSA1 <- msaConvert(MSA, type="seqinr::alignment")
@@ -541,7 +530,7 @@ col_vec1[is.na(col_vec1)] <- col_vec2[is.na(col_vec1)]
 col_vec1[is.na(col_vec1)] <- "black"
 
 
-pdf(file = paste0(o.dir, "/bcsC_tree.pdf"), width = 9, height = 5)
+pdf(file = f("/bcsC_tree.pdf"), width = 9, height = 5)
 plot.phylo(tree, srt=0, adj=0, show.node.label = T,
            tip.color= col_vec1, 
            font = font_vec,

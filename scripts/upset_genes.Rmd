@@ -23,17 +23,13 @@ library(tidyverse)
 library(readxl)
 library(data.table)
 library(UpSetR)
+library(here)
 
-get.dir <- function(folder) {
-  getwd() %>% 
-    str_split(pattern = "/") %>% 
-    unlist() %>%  
-    `[`(1:(length(.)-1)) %>% 
-    paste(collapse = "/") %>% 
-    paste0(., "/", folder)
-}
-d.dir <- get.dir("Data")
-r.dir <- get.dir("Results")
+d.pro <- paste0(here(), "/data/processed")
+d.raw <- paste0(here(), "/data/raw")
+o.dir <- paste0(here(), "/output")
+f.dir <- paste0(here(), "/figures")
+s.dir <- paste0(here(), "/script")
 ```
 
 
@@ -52,7 +48,7 @@ psiblast_subset_files <- c(
 )
 
 # Title of pdf
-pdf_title <- "/UpSet_cellulose_1_and_2.pdf"
+pdf_title <- "/TEST.pdf"
 
 # Should the plot only contain hits incorporated into an operon?
 operon_only <- TRUE
@@ -72,7 +68,7 @@ GOI <- TRUE # Set to TRUE if everything is wanted
 # Load raw psiblast results
 psiblast <- data.frame()
 for (q in psiblast_outputs) {
-  psi_path <- paste(d.dir, "/psiblast/", q, sep = "")
+  psi_path <- paste(d.raw, "/psiblast/", q, sep = "")
   psiblast <- rbind(
     psiblast,
     read.csv(file = psi_path, header = FALSE, sep = "\t", col.names = c("Query_label", "Target_label", "Percent_identity", "align_length", "mismatch", "gap_opens", "start_query", "end_query", "start_target", "end_target", "E_value", "Bit score"))
@@ -83,11 +79,11 @@ psiblast <- subset(psiblast, Percent_identity >= 20)
 # Load subsetted psiblast results
 psiblast_subset <- data.frame()
 for (fil in psiblast_subset_files) {
-  psiblast_subset <- rbind(psiblast_subset, read_tsv(paste0(d.dir, "/psiblast_subset_tsv/", fil)))
+  psiblast_subset <- rbind(psiblast_subset, read_tsv(paste0(d.pro, "/psiblast_subset_tsv/", fil)))
 }
 
 # Load MAG statistics
-magstats <- read_tsv(paste0(d.dir, "/magstats.tsv"))
+magstats <- read_tsv(paste0(d.raw, "/magstats.tsv"))
 ```
 
 
@@ -124,7 +120,7 @@ if (operon_only) {
   upset_DF <- subset(upset_DF, upset_DF$Operon)
 }
 
-pdf(paste0(d.dir, pdf_title), width = 8, height = 6)
+pdf(paste0(f.dir, pdf_title), width = 8, height = 6)
 UpSetR::upset(upset_DF,
   number.angles = 0, point.size = 2.5, line.size = 1, text.scale = 1.2,
   nsets = length(colnames(upset_DF))-3,

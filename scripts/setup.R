@@ -13,3 +13,11 @@ dir_create(here(c("scripts",           # storing all .R, .Rmd, .py files
 )
 )
 )
+
+
+# have this code chunk in the start of every file to refer to the folders
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
