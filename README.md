@@ -1,4 +1,4 @@
 # P8
-Code used in 8. semester of my masters
+Code used in 8. semester in semester project
 
-Private
+Task performed include: PSIBLAST result data wrangling, upset plot data p+reparation and plotting, MSA and subsequence tree plotting and manipulation and more
