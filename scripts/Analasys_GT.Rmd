@@ -95,8 +95,8 @@ get_upset_from_psiblast <- function(psiblast) {
   genes <- unique(psiblast$Query_label)
   psiblast <- as.data.table(psiblast)
   upset_df <- psiblast[, list(Query_label, Target_label)][
-                            , (genes) := as.list(genes %in% Query_label), by = Target_label][
-                            , `:=`(Query_label = NULL, Target_label = NULL)]
+                       , (genes) := as.list(genes %in% Query_label), by = Target_label][
+                       , `:=`(Query_label = NULL, Target_label = NULL)]
   upset_df <- upset_df*1
   return(upset_df)
 }

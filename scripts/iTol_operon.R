@@ -2,7 +2,13 @@ library(dplyr)
 library(tidyverse)
 library(readxl)
 library(readr)
+library(here)
 library("data.table")
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
 
 # Before running:
 ## Change working dictionary path
@@ -10,7 +16,7 @@ library("data.table")
 ## Check the query_figure excel file location
 
 # Set working directory and path to psiblast input
-setwd("C:/Users/heide/OneDrive - Aalborg Universitet/BIOT/8. semester/Project/Data")
+setwd(d(""))
 
 # Read query information
 query_metadata <- excel_sheets("Query_figur.xlsx") %>% 
@@ -25,9 +31,9 @@ MAGs <- read_tsv("magstats.tsv") %>%
   `[`(,1)
 iTol_all <- data.frame(MAG = MAGs)
 
-for (i in list.files("psiblast_subset_tsv/")) {
+for (i in list.files(d("psiblast_subset_tsv/", raw=FALSE))) {
   psiblast_file_name <- tools::file_path_sans_ext(i)
-  psiblast_subset_path <- paste("psiblast_subset_tsv/", psiblast_file_name, ".tsv", sep="")
+  psiblast_subset_path <- d(paste("psiblast_subset_tsv/", psiblast_file_name, ".tsv", sep=""), raw=FALSE)
   
   Query <- subset(query_metadata, Psiblast==psiblast_file_name)
   query_sheet <- unique(subset(query_metadata, Psiblast==psiblast_file_name)$Polysaccheride)
@@ -54,5 +60,5 @@ for (i in list.files("psiblast_subset_tsv/")) {
   iTol_all <- merge(iTol_all, iTol, by="MAG", all=TRUE)
 }
 
-write_tsv(iTol_all, "iTol/iTol_percgenes_found_operons.tsv")
+write_tsv(iTol_all, paste0(here(), "/data/processed/iTol_percgenes_found_operons.tsv"))
 show(unique(df$Query_label))
