@@ -133,20 +133,38 @@ psiblast <- psiblast %>%
       strand=="+" ~ 1,
       strand=="-" ~ -1,
       TRUE ~ as.numeric(strand)
-      )
+      ),
+    end_target_plot = end_target*3 + start,
+    start_target_plot = start_target*3 + start
   )
 ```
 
 Plotting using GGgenes
 
 ```{r}
+gene_height <- 4
 pdf(f("/gggenes_test_cellulose.pdf"), height=25, width = 15)
-ggplot(psiblast, aes(xmin=start, xmax=end, y = ID, fill=Function, forward = strand, label = Query_label)) + 
-  geom_gene_arrow(arrowhead_height = unit(4, "mm"), arrowhead_width = unit(2, "mm"), arrow_body_height = unit(4, "mm")) + 
-  geom_gene_label(align = "left", padding.x = unit(2, "mm")) +
+ggplot(psiblast, aes(xmin=start, xmax=end, y = ID, forward = strand)) + 
+  geom_gene_arrow(arrowhead_height = unit(gene_height, "mm"), 
+                  arrow_body_height = unit(gene_height, "mm"), 
+                  arrowhead_width = unit(5, "mm")) +
+  geom_subgene_arrow(data = psiblast,
+                     mapping = aes(xmin=start, 
+                                   xmax=end,
+                                   xsubmin = start_target_plot, 
+                                   xsubmax = end_target_plot, 
+                                   fill=Function, 
+                                   forward = strand),
+                     arrowhead_height = unit(gene_height, "mm"), 
+                     arrow_body_height = unit(gene_height, "mm"),
+                     arrowhead_width = unit(5, "mm"), 
+                     #position = position_nudge(y = 0.3)
+                     ) +
+  #geom_gene_label(align = "left", padding.x = unit(2, "mm")) +
   facet_wrap(~ operon,scales = "free", ncol=1) + 
   scale_fill_brewer(palette = "Set3") +
-  theme_genes()
+  theme_genes() +
+  geom_text(data=psiblast %>% mutate(start = (start_target_plot + end_target_plot)/2), aes(x=start, label = Query_label), nudge_y = 0.3 )
 dev.off()
 ```
 
