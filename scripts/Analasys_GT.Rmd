@@ -73,14 +73,15 @@ if (!any(list.files(d("", raw=F)) %in% d("/psiblast_uniq.tsv", raw=F))) {
         fill= TRUE
       )
     )
-    psiblast <- subset(psiblast, Percent_identity >= 20)
+    psiblast <- subset(psiblast, Percent_identity > 20)
     print(q)
   }
   
   # Get best hit of each query-target pair.
   psiblast_uniq <- psiblast %>% 
     group_by(Query_label, Target_label) %>% 
-    filter(E_value == min(E_value))
+    filter(E_value == min(E_value)) %>% 
+    filter(row_number() == 1)
   write_tsv(psiblast_uniq, file = d("/psiblast_uniq.tsv", raw=F))
 } else (
   psiblast_uniq <- read_tsv(d("/psiblast_uniq.tsv", raw=F))
@@ -383,6 +384,25 @@ UpSetR::upset(upset_non_gt,  nsets = ncol(upset_non_gt), nintersects = 150,
   )
 )
 dev.off()
+
 ```
+
+
+
+
+
+Upset plot algE, bcsC, pgaA, crdA, crdC, pelB
+
+```{r}
+
+pdf(f("upset_export.pdf"))
+psiblast_on_demand <- subset(psiblast_uniq, Query_label %in% c("algE", "bcsCI", "pgaA", "crdA", "crdC", "pelB"))
+upset_on_demand <- get_upset_from_psiblast(psiblast_on_demand)
+UpSetR::upset(
+  upset_on_demand, nsets = ncol(psiblast_on_demand)
+)
+dev.off()
+```
+
 
 

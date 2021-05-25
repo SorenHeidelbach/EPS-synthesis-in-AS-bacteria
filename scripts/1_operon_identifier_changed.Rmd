@@ -19,6 +19,11 @@ knit_with_date(rstudioapi::getActiveDocumentContext()$path)
 ```{r}
 library(dplyr)
 library(stringr)
+library(data.table)
+library(readr)
+library(tidyverse)
+library(readxl)
+library(gggenes)
 # Setting up enviroment for work folder
 library(here)
 d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
@@ -32,20 +37,13 @@ s <- function(x){paste(here(), x, sep = "/scripts/")}
 ## Date: 23 maj 2021
 ## Author: Soren H
 
-```{r}
-library(data.table)
-library(readr)
-library(tidyverse)
-```
-
-
 
 ```{r}
 filename_psiblast <- "cellulose1"
 perc_id = 20
-max_dist_prok = 5
+max_dist_prok = 8
 max_dist_gene = 2000
-min_genes = 3
+min_genes = 2
 ```
 
 
@@ -53,9 +51,18 @@ min_genes = 3
 ```{r}
 magstats <- fread(d("magstats.tsv"), sep = "\t")
 
+query_metadata <- excel_sheets(d("/Query_figur.xlsx")) %>% 
+  sapply(function(X) read_xlsx(d("/Query_figur.xlsx"), sheet = X, skip = 1), USE.NAMES = T) %>% 
+  lapply(as.data.frame) %>% 
+  `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>% 
+  rbindlist()
+
 gff <- fread(d("gff.tsv")) %>% 
   mutate(Target_label = paste(ID, ProkkaNO, sep="_"))
+```
 
+
+```{r}
 psiblast <- fread(
   file = d(paste0("/psiblast/", filename_psiblast, ".txt")), 
   header = FALSE, fill=TRUE, sep = "\t", 
@@ -73,8 +80,9 @@ psiblast <- psiblast %>%
   left_join(magstats, by = "ID", keep = FALSE) %>% 
   mutate(ProkkaINT = as.numeric(ProkkaNO)) %>% 
   as.data.table() %>% 
-  arrange(Target_label, ProkkaINT)
-rm(gff, magstats)
+  arrange(Target_label, ProkkaINT) %>% 
+  left_join(x=., y=query_metadata[, c("Genename", "Function")], by = c("Query_label" = "Genename"))
+#rm(gff, magstats)
 ```
 
 
@@ -96,7 +104,7 @@ psiblast <- psiblast[, `:=`(
                  )
                  , by=.(seqname, ID)
                  ][
-                   ante_prok < max_dist_prok | post_prok < max_dist_prok & ante_gene < max_dist_gene | post_gene < max_dist_gene
+                   {ante_prok < max_dist_prok | post_prok < max_dist_prok} & {ante_gene < max_dist_gene | post_gene < max_dist_gene}
                  ][,
                    operon_place := case_when(
                      (post_prok < max_dist_prok & post_gene < max_dist_gene) & 
@@ -115,16 +123,32 @@ for (i  in 1:nrow(psiblast)) {
 }
 psiblast <- psiblast %>% 
   group_by(operon) %>% 
-  filter(n() >= min_genes)
-
+  filter(length(unique(Query_label)) >= min_genes) %>% 
+  mutate(
+    end = end - min(start),
+    start = start - min(start)
+    ) %>% 
+  mutate(
+    strand = case_when(
+      strand=="+" ~ 1,
+      strand=="-" ~ -1,
+      TRUE ~ as.numeric(strand)
+      )
+  )
 ```
 
+Plotting using GGgenes
 
-
-
-
-
-
+```{r}
+pdf(f("/gggenes_test_cellulose.pdf"), height=25, width = 15)
+ggplot(psiblast, aes(xmin=start, xmax=end, y = ID, fill=Function, forward = strand, label = Query_label)) + 
+  geom_gene_arrow(arrowhead_height = unit(4, "mm"), arrowhead_width = unit(2, "mm"), arrow_body_height = unit(4, "mm")) + 
+  geom_gene_label(align = "left", padding.x = unit(2, "mm")) +
+  facet_wrap(~ operon,scales = "free", ncol=1) + 
+  scale_fill_brewer(palette = "Set3") +
+  theme_genes()
+dev.off()
+```
 
 
 
