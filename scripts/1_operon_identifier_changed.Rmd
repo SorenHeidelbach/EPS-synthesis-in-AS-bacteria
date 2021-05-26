@@ -171,7 +171,7 @@ psiblast_surr$operon <- factor(psiblast_surr$operon, levels = ID_levels)
 
 
 ```{r}
-
+ 
 
 ips <- data.frame()
 for (query in filename_psiblast) {
