@@ -39,11 +39,11 @@ s <- function(x){paste(here(), x, sep = "/scripts/")}
 
 
 ```{r}
-filename_psiblast <- c("cellulose1", "cellulose2")
+filename_psiblast <- c("pnag_ica", "pnag_pga")
 ips_path <- d("ips")
 perc_id = 20
 max_dist_prok = 8
-max_dist_gene = 5000
+max_dist_gene = 2000
 min_genes = 3
 ```
 
@@ -91,7 +91,8 @@ psiblast <- psiblast %>%
   mutate(ProkkaNO = as.numeric(ProkkaNO)) %>% 
   as.data.table() %>% 
   arrange(Target_label, ProkkaNO) %>% 
-  left_join(x=., y=query_metadata[, c("Genename", "Function")], by = c("Query_label" = "Genename"))
+  left_join(y=query_metadata[, c("Genename", "Function")], by = c("Query_label" = "Genename")) %>% 
+  distinct()
 #rm(gff, magstats)
 ```
 
@@ -123,50 +124,34 @@ psiblast <- psiblast[, `:=`(
                  ]
 
 # Assigning unique number to each operon
-psiblast[, "operon"] <- 0
-psiblast[, "operon"] <- as.numeric(psiblast$operon)
-for (i  in 1:nrow(psiblast)) {
-  if (psiblast[i,]$operon_place == "start"){
-    psiblast[i, "operon"] <- max(psiblast[, "operon"], na.rm = TRUE) + 1
-  }
-  psiblast[i,"operon"] <- max(psiblast[, "operon"], na.rm = TRUE)
-}
+psiblast$operon <- psiblast[, .(operon_no = ifelse(operon_place=="start", .I, NA))] %>% 
+  fill(operon_no, .direction = "down")
 
-gff2 <- gff %>% 
+gff <- gff %>% 
   mutate(ProkkaNO = as.numeric(ProkkaNO)) %>% 
   subset(!is.na(ProkkaNO))
+
 psiblast_surr <- psiblast %>% 
   group_by(operon) %>% 
-  summarise(
+  dplyr::summarise(
     ID = unique(ID),
     tig = unique(seqname),
     max = max(ProkkaNO),
-    min = min(ProkkaNO)
-    ) %>% 
-  full_join(gff2) %>% 
-  group_by(operon) %>% 
+    min = min(ProkkaNO)) %>% 
+  full_join(gff) %>% 
   filter(ProkkaNO <= (max+2) & ProkkaNO >= (min-2) & seqname == tig) %>%
-  full_join(psiblast, .) %>% 
+  full_join(psiblast) %>% 
   group_by(operon) %>% 
-  filter(length(unique(Query_label)) >= min_genes) %>% 
+  filter(length(unique(Query_label[which(!is.na(Query_label))])) >= min_genes) %>% 
+  group_by(operon) %>% 
+  mutate(end = end - min(start), start = start - min(start)) %>% 
   mutate(
-    end = end - min(start),
-    start = start - min(start)
-    ) %>% 
-  mutate(
-    strand = case_when(
-      strand=="+" ~ 1,
-      strand=="-" ~ -1,
-      TRUE ~ as.numeric(strand)
-      ),
+    strand = case_when(strand=="+" ~ 1, strand=="-" ~ -1, TRUE ~ as.numeric(strand)),
     end_target_plot = ifelse(is.na(end_target), end, end_target*3 + start),
     start_target_plot = ifelse(is.na(start_target), start, start_target*3 + start),
-    Percent_identity = ifelse(is.na(Percent_identity), 50, Percent_identity)
+    Percent_identity = ifelse(is.na(Percent_identity), 50, Percent_identity),
+    operon = factor(operon, levels = unique(arrange(., -`Bit score`)$operon))
   ) 
-ID_levels <- arrange(psiblast_surr, -`Bit score`) %>% `[`(,"operon") %>% unique() 
-ID_levels <- ID_levels$operon
-psiblast_surr$operon <- factor(psiblast_surr$operon, levels = ID_levels)
-
 ```
 
 
@@ -175,7 +160,7 @@ psiblast_surr$operon <- factor(psiblast_surr$operon, levels = ID_levels)
 
 ips <- data.frame()
 for (query in filename_psiblast) {
-  for (id in psiblast$ID) {
+  for (id in unique(psiblast$ID)) {
     id2 <- list.files(d(paste0("ips/", query, "_fasta_removed/"))) %>% 
       subset(grepl(., pattern = id))
     for (id2 in id2) {
@@ -209,33 +194,37 @@ for (query in filename_psiblast) {
     filter(!is.na(Domain)) %>% 
     distinct()
 
-  ips3$Domain[grep("Glycosyl transferase family 2", ips3$Domain)] <- "GT2"
-  ips3$Domain[grep("Glycosyl transferase Family 4", ips3$Domain)] <- "GT4"
-  ips3$Domain[grep("Glycosyl transferase 4-like", ips3$Domain)] <- "GT4_like"
-  ips3$Domain[grep("Glycosyl transferase family 41", ips3$Domain)] <- "GT41"
-  ips3$Domain[grep("Glycosyltransferase like family 2", ips3$Domain)] <- "GT2_like"
-  ips3$Domain[grep("Glycosyltransferase Family 4", ips3$Domain)] <- "GT4"
-  ips3$Domain[grep("Glycosyl transferase Family 4", ips3$Domain)] <- "GT4"
-  ips3$Domain[grep("Glycosyl transferase family 2", ips3$Domain)] <- "GT2"
-  ips3$Domain[grep("Glycosyl transferase family 2", ips3$Domain)] <- "GT 2"
-  ips3$Domain[grep("Glycosyl transferase family 2", ips3$Domain)] <- "GT 2"
-  ips3$Domain[grep("Glycosyl hydrolases family 8", ips3$Domain)] <- "GH8"
-  ips3$Domain[grep("Glycosyl transferase family 2", ips3$Domain)] <- "GT 2"
-  ips3$Domain[grep("Cellulose-complementing protein A", ips3$Domain)] <- "ccpA"
-  ips3$Domain[grep("Glycosyl hydrolase family 3 N terminal domain", ips3$Domain)] <- "GH3_N"
+  ips3$Domain <- gsub("[gG]lycosyl.*transferase.*[fF]amily ", "GT f", ips3$Domain)
+  ips3$Domain <- gsub("[gG]lycosyl.*transferase.*[gG]roup ", "GT g", ips3$Domain)
+  ips3$Domain <- gsub("[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f", ips3$Domain)
+  ips3$Domain <- gsub("[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH", ips3$Domain)
+  ips3$Domain <- gsub("[gG]lycosyl [hH]ydrolase" , "GH", ips3$Domain)
+  ips3$Domain <- gsub("[cC]ellulose.*synth.*protein" , "CS ", ips3$Domain)
+  ips3$Domain <- gsub("[cC]ellulose.*synth.*" , "CS ", ips3$Domain)
+  
+  
+  ips3$Domain <- gsub(" N.terminal domain" , "_N", ips3$Domain)
+  ips3$Domain <- gsub(" C.terminal domain" , "_C", ips3$Domain)
+  ips3$Domain <- gsub("[iI]nitation [fF]actor" , "IF", ips3$Domain)
+  ips3$Domain <- gsub("[eE]longation [fF]actor" , "EF", ips3$Domain)
+  ips3$Domain <- gsub(".*[dD]omain of unknown function.*" , "NA", ips3$Domain)
+  
+  
   ips3$Domain[grep("Domain of unknown function", ips3$Domain)] <- "NA"
+  
+  ips3$Domain[grep("Glycosyl transferase 4-like", ips3$Domain)] <- "GT4_like"
+  ips3$Domain[grep("Glycosyltransferase like family 2", ips3$Domain)] <- "GT2_like"
+  ips3$Domain[grep("Cellulose-complementing protein A", ips3$Domain)] <- "ccpA"
   ips3$Domain[grep("deacetylase", ips3$Domain)] <- "PDA"
   ips3$Domain[grep("Tetratrico", ips3$Domain)] <- "T"
   ips3$Domain[grep("TPR repeat", ips3$Domain)] <- "T"
-  ips3$Domain[grep("glycosyl hydrolase family 13", ips3$Domain)] <- "GH13"
-  ips3$Domain[grep("glycosyl hydrolase", ips3$Domain)] <- "GH"
   ips3$Domain[grep("PilZ domain", ips3$Domain)] <- "PilZ"
   ips3$Domain[grep("Cellulose synthase", ips3$Domain)] <- "CS"
+  ips3$Domain[grep("Cellulose biosynthesis", ips3$Domain)] <- "CS"
   ips3$Domain[grep("Cellulose synthase operon protein C C???terminus (BCSC_C)", ips3$Domain)] <- "BCSC_C"
   ips3$Domain[grep("Bacterial cellulose synthase subunit", ips3$Domain)] <- "BCS"
   ips3$Domain[grep("Cellulose biosynthesis protein BcsQ", ips3$Domain)] <- "BcsQ"
   ips3$Domain[grep("Cellulose biosynthesis protein BcsG", ips3$Domain)] <- "BcsG"
-  ips3$Domain[grep("Cellulose biosynthesis", ips3$Domain)] <- "CS"
   ips3$Domain[grep("Acyltransferase", ips3$Domain)] <- "ATF"
   ips3$Domain[grep("Glycosyl transferases group 1", ips3$Domain)] <- "GTg1"
   ips3$Domain[grep("Polysaccharide biosynthesis protein", ips3$Domain)] <- "Pbp"
@@ -248,7 +237,7 @@ Plotting using GGgenes
 
 ```{r}
 gene_height <- 4
-pdf(f("/gggenes_test_cellulose1_2.pdf"), height=length(unique(psiblast_surr$operon)), width = 15)
+pdf(f(paste0("/gggenes_",filename_psiblast,".pdf")), height=length(unique(psiblast_surr$operon)), width = 15)
 ggplot(psiblast_surr, aes(xmin=start, xmax=end, y = ID, forward = strand)) + 
   geom_gene_arrow(arrowhead_height = unit(gene_height, "mm"), 
                   arrow_body_height = unit(gene_height, "mm"), 
@@ -293,6 +282,7 @@ ggplot(psiblast_surr, aes(xmin=start, xmax=end, y = ID, forward = strand)) +
   theme(legend.position = "top") +
   scale_fill_brewer(palette = "Set3")
 dev.off()
+print(length(unique(psiblast_surr$operon)))
 
 ```
 
