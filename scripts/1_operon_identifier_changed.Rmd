@@ -253,7 +253,7 @@ add_midas_tax <- function(data) {
       title = str_replace(title, pattern = "\\Ca_(.*) ", replacement = "Candidatus \\1"),
       title = str_replace(title, pattern = "\\*(.*)\\_marine\\_group\\*", replacement = "\\1 marine group"),
       title = str_replace(title, pattern = "\\*(.*)\\_marine\\_group\\*", replacement = "\\1 marine group"),
-      title = str_replace(title, pattern = "_Subgroup_3", replacement = " (Subgroup 3)"),
+      title = str_replace(title, pattern = "_Subgroup_(.)", replacement = " (Subgroup \\1)"),
       
     )
 }
