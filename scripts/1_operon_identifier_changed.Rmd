@@ -13,19 +13,30 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r}
+```{r setup}
 library(data.table)
 library(tidyverse)
 library(readxl)
 library(gggenes)
 library(glue)
 library(ggtext)
-# Setting up enviroment for work folder
+library(RVerbalExpressions)
+
+# Setting up environment for work folder
 library(here)
-d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
-o <- function(x){paste(here(), x, sep = "/output/")}
-f <- function(x){paste(here(), x, sep = "/figures/")}
-s <- function(x){paste(here(), x, sep = "/scripts/")}
+d <-
+  function(x, raw = TRUE) {
+    paste0(here(), "/data/", ifelse(raw, "raw/", "processed/"), x)
+  }
+o <- function(x) {
+  paste(here(), x, sep = "/output/")
+}
+f <- function(x) {
+  paste(here(), x, sep = "/figures/")
+}
+s <- function(x) {
+  paste(here(), x, sep = "/scripts/")
+}
 
 ```
 
@@ -56,144 +67,194 @@ flanking_genes = 3
 ```{r}
 magstats <- fread(d("magstats.tsv"), sep = "\t")
 
-query_metadata <- excel_sheets(d("/Query_figur.xlsx")) %>% 
+query_metadata <- excel_sheets(d("/Query_figur.xlsx")) %>%
   sapply(function(X) read_xlsx(d("/Query_figur.xlsx"), sheet = X, skip = 1), USE.NAMES = T) %>% 
   lapply(as.data.frame) %>% 
-  `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>% 
+  subset(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>%
   rbindlist()
 
-gff <- fread(d("gff.tsv")) %>% 
-  mutate(Target_label = paste(ID, ProkkaNO, sep="_")) %>% 
-  mutate(ProkkaNO = as.numeric(ProkkaNO)) %>% 
+gff <- fread(d("gff.tsv")) %>%
+  mutate(Target_label = paste(ID, ProkkaNO, sep = "_")) %>% 
+  mutate(ProkkaNO = as.numeric(ProkkaNO)) %>%
   filter(!is.na(ProkkaNO))
 ```
 
 
 ```{r}
 
+
+
 ##### PSI-BLAST results preparation #####
-psiblast <- 
+psiblast <-
   # Loading
-  filename_psiblast %>% 
-  paste0("/psiblast/", ., ".txt") %>% 
+  filename_psiblast %>%
+  paste0("/psiblast/", ., ".txt") %>%
   d() %>%
-  lapply(fread, 
-    header = FALSE, 
-    sep = "\t", 
-    col.names = c("Query_label", "Target_label", "Percent_identity", "align_length", "mismatch", "gap_opens", "start_query", "end_query", "start_target", "end_target", "E_value", "Bit score"),
-    fill= TRUE) %>% 
-  bind_rows() %>% 
+  lapply(
+    fread,
+    header = FALSE,
+    sep = "\t",
+    col.names = c(
+      "Query_label",
+      "Target_label",
+      "Percent_identity",
+      "align_length",
+      "mismatch",
+      "gap_opens",
+      "start_query",
+      "end_query",
+      "start_target",
+      "end_target",
+      "E_value",
+      "Bit score"
+    ),
+    fill = TRUE
+  ) %>%
+  bind_rows() %>%
   # Filtering
-  subset(!is.na(E_value)) %>%   
-  filter(Percent_identity > perc_id) %>% 
-  group_by(Target_label) %>% 
-  filter(`Bit score` == max(`Bit score`)) %>% 
-  filter(!duplicated(Target_label)) %>%   
+  subset(!is.na(E_value)) %>%
+  filter(Percent_identity > perc_id) %>%
+  group_by(Target_label) %>%
+  filter(`Bit score` == max(`Bit score`)) %>%
+  filter(!duplicated(Target_label)) %>%
   # Cleaning
-  separate(Target_label, c("ID", "ProkkaNO"), sep = -5, remove = FALSE, extra = "merge") %>%
-  mutate(ProkkaNO = as.numeric(ProkkaNO)) %>% 
-  mutate(ID = str_sub(ID, start = 1, end = -2)) %>%
+  separate(
+    Target_label,
+    c("ID", "ProkkaNO"),
+    sep = -5,
+    remove = FALSE,
+    extra = "merge"
+  ) %>%
+  mutate(ProkkaNO = as.numeric(ProkkaNO)) %>%
+  mutate(ID = str_sub(ID, start = 1, end = -2)) %>% 
   # Merging
-  left_join(gff, by = c("Target_label", "ProkkaNO", "ID"), keep = FALSE) %>%
-  left_join(magstats, by = "ID", keep = FALSE) %>% 
-  left_join(query_metadata[, c("Genename", "Function")], by = c("Query_label" = "Genename"))  %>% 
-  arrange(Target_label, ProkkaNO) %>% 
+  left_join(gff,
+            by = c("Target_label", "ProkkaNO", "ID"),
+            keep = FALSE) %>%
+  left_join(magstats, by = "ID", keep = FALSE) %>%
+  left_join(query_metadata[, c("Genename", "Function")], by = c("Query_label" = "Genename"))  %>%
+  arrange(Target_label, ProkkaNO) %>%
   # Operon Grouping
-  group_by(seqname, ID) %>% 
+  group_by(seqname, ID) %>%
   mutate(
     prio_prok = replace_na(ProkkaNO - shift(ProkkaNO, 1), # distance to prior hit
-                           max_dist_gene+1),# assign NAs to max distance + 1
+                           max_dist_gene + 1),
+    # assign NAs to max distance + 1
     post_prok = replace_na(shift(ProkkaNO, -1) - ProkkaNO, # distance to posterior hit
-                           max_dist_gene+1),# assign NAs to max distance + 1
+                           max_dist_gene + 1),
+    # assign NAs to max distance + 1
     prio_gene = replace_na(start - shift(end, 1), # distance to prior hit
-                           max_dist_gene+1),# assign NAs to max distance + 1
+                           max_dist_gene + 1),
+    # assign NAs to max distance + 1
     post_gene = replace_na(shift(start, -1) - end,  # distance to posterior hit
-                           max_dist_gene+1) # assign NAs to max distance + 1
-  ) %>% 
-  filter({prio_prok < max_dist_prok | post_prok < max_dist_prok} & 
-         {prio_gene < max_dist_gene | post_gene < max_dist_gene}
-  ) %>% 
-  ungroup() %>% 
+                           max_dist_gene + 1) # assign NAs to max distance + 1
+  ) %>%
+  filter((prio_prok < max_dist_prok | post_prok < max_dist_prok) &
+           (prio_gene < max_dist_gene | post_gene < max_dist_gene)
+  ) %>%
+  ungroup() %>%
   mutate(
     operon_place = ifelse(
-      (post_prok < max_dist_prok & post_gene < max_dist_gene) & 
-      !(prio_prok < max_dist_prok & prio_gene < max_dist_gene),
+      (post_prok < max_dist_prok & post_gene < max_dist_gene) &
+        !(prio_prok < max_dist_prok & prio_gene < max_dist_gene),
       "start",
-      "."),
-    operon = ifelse(operon_place=="start", row_number(), NA)
-  ) %>% 
-  fill(operon, .direction = "down") %>% 
-  group_by(operon) %>% 
-  filter(length(unique(Query_label)) >= min_genes) %>% 
-  select(-prio_prok, -prio_gene, -post_prok, -post_gene, -operon_place) 
+      "."
+    ),
+    operon = ifelse(operon_place == "start", row_number(), NA)
+  ) %>%
+  fill(operon, .direction = "down") %>%
+  group_by(operon) %>%
+  filter(length(unique(Query_label)) >= min_genes) %>%
+  select(-prio_prok, -prio_gene, -post_prok, -post_gene, -operon_place)
 
 
 ##### Expansion of PSI-BLAST operons (genes in plot) #####
-genes <- psiblast %>% 
-  group_by(operon) %>% 
+genes <- psiblast %>%
+  group_by(operon) %>%
   summarise(
     ID = unique(ID),
     tig = unique(seqname),
     max = max(ProkkaNO),
-    min = min(ProkkaNO)) %>% 
-  full_join(gff) %>% 
-  group_by(operon) %>% 
-  filter(ProkkaNO <= (max+flanking_genes) & ProkkaNO >= (min-flanking_genes) & seqname == tig) %>%
-  full_join(psiblast) %>% 
-  group_by(operon) %>% 
+    min = min(ProkkaNO)
+  ) %>%
+  full_join(gff) %>%
+  group_by(operon) %>%
+  filter(ProkkaNO <= (max + flanking_genes) &
+           ProkkaNO >= (min - flanking_genes) & seqname == tig) %>%
+  full_join(psiblast) %>%
+  group_by(operon) %>%
   mutate(
-    end = end - min(start), start = start - min(start),
+    end = end - min(start),
+    start = start - min(start),
     # gggenes require 1 and -1 as strand direction
-    strand = case_when(strand=="+" ~ 1, strand=="-" ~ -1, TRUE ~ as.numeric(strand)),
+    strand = case_when(strand == "+" ~ 1, strand == "-" ~ -1, TRUE ~ as.numeric(strand)),
     # converting AA numbers to nucleotide numbers
-    end_target_plot = ifelse(is.na(end_target), end, end_target*3 + start),
-    start_target_plot = ifelse(is.na(start_target), start, start_target*3 + start),
+    end_target_plot = ifelse(is.na(end_target), end, end_target * 3 + start),
+    start_target_plot = ifelse(is.na(start_target), start, start_target *
+                                 3 + start),
     # Assigning artificial percent identity to domains
     Percent_identity = ifelse(is.na(Percent_identity), 50, Percent_identity),
-    # Order operons from highest bit score to lowest 
+    # Order operons from highest bit score to lowest
     operon = factor(operon, levels = unique(arrange(., -`Bit score`)$operon)),
-  ) %>% 
-  fill(MiDAS3_6Tax, .direction = "updown") %>% 
-  fill(SILVA138Tax, .direction = "updown") %>% 
+  ) %>%
+  fill(MiDAS3_6Tax, .direction = "updown") %>%
+  fill(SILVA138Tax, .direction = "updown") %>%
   fill(GTDBTax, .direction = "updown")
-  
-
 
 ##### Loading interproscan data and making domain data #####
-domains <- 
-  lapply(filename_psiblast, function(query){
-    mag <- list.files(d(paste0("ips/", query, "_fasta_removed/"))) %>% 
-        subset(grepl(., pattern = query))
-    lapply(mag, function(sub_mag, query1 = query){
+domains <-
+  lapply(filename_psiblast, function(query) {
+    mag <- list.files(d(paste0("ips/", query, "_fasta_removed/"))) %>%
+      subset(grepl(., pattern = query))
+    lapply(mag, function(sub_mag, query1 = query) {
       sub_mag_path = d(paste0("ips/", query1, "_fasta_removed/", sub_mag))
-      if(file.info(sub_mag_path)$size > 0) {
-        read.table(sub_mag_path, sep = "\t",  fill = TRUE, comment.char = "#") 
+      if (file.info(sub_mag_path)$size > 0) {
+        read.table(
+          sub_mag_path,
+          sep = "\t",
+          fill = TRUE,
+          comment.char = "#"
+        )
       }
-    }) %>% 
+    }) %>%
       bind_rows()
-  }) %>% 
-  bind_rows() %>% 
-  filter(!str_detect("polypeptide", V3)) %>% 
+  }) %>%
+  bind_rows() %>%
+  filter(!str_detect("polypeptide", V3)) %>%
   mutate(
     domain = str_extract(V9, "signature_desc=[^;]*;"),
     domain = str_sub(domain, 1, -2),
     domain = gsub("signature_desc=", "", x = domain)
-  ) %>% 
-  subset(select = -c(V2, V3, V7, V8, V9)) %>% 
+  ) %>%
+  subset(select = -c(V2, V3, V7, V8, V9)) %>%
   setNames(c("Target_label", "start1", "end1", "e_value", "Domain")) %>%
-  full_join(genes, .) %>% 
-  mutate(
-    start2 = start + as.numeric(start1)*3,
-    end2 = start + as.numeric(end1)*3
-  ) %>% 
-  subset(select = c("start", "end", "start2", "end2", "Domain", "operon", "ID", "Function", "strand")) %>% 
-  mutate(Percent_identity = 50) %>% 
-  filter(!is.na(Domain)) %>% 
-  distinct() %>% 
+  full_join(genes, .) %>%
+  mutate(start2 = start + as.numeric(start1) * 3,
+         end2 = start + as.numeric(end1) * 3) %>%
+  subset(
+    select = c(
+      "start",
+      "end",
+      "start2",
+      "end2",
+      "Domain",
+      "operon",
+      "ID",
+      "Function",
+      "strand"
+    )
+  ) %>%
+  mutate(Percent_identity = 50) %>%
+  filter(!is.na(Domain)) %>%
+  distinct() %>%
   mutate(
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
-    Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
+    Domain = str_replace(
+      Domain,
+      "[gG]lycosyl.*transferase.[lL]ike.[fF]amily",
+      "GT like f"
+    ),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
     Domain = str_replace(Domain, "[cC]ellulose.*synth.*protein" , "CS "),
@@ -205,25 +266,37 @@ domains <-
     Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA")
   )
 
-domains$Domain[grep("Glycosyl transferase 4-like", domains $Domain)] <- "GT4_like"
-domains$Domain[grep("Glycosyltransferase like family 2", domains $Domain)] <- "GT2_like"
-domains$Domain[grep("Cellulose-complementing protein A", domains $Domain)] <- "ccpA"
-domains$Domain[grep("deacetylase", domains $Domain)] <- "PDA"
-domains$Domain[grep("Tetratrico", domains $Domain)] <- "T"
-domains$Domain[grep("TPR repeat", domains $Domain)] <- "T"
-domains$Domain[grep("PilZ domain ", domains $Domain)] <- "PilZ"
-domains$Domain[grep("Cellulose synthase", domains $Domain)] <- "CS"
-domains$Domain[grep("Cellulose biosynthesis", domains $Domain)] <- "CS"
-domains$Domain[grep("Cellulose synthase operon protein C C???terminus (BCSC_C)", domains $Domain)] <- "BCSC_C"
-domains$Domain[grep("Bacterial cellulose synthase subunit", domains $Domain)] <- "BCS"
-domains$Domain[grep("Cellulose biosynthesis protein BcsQ", domains $Domain)] <- "BcsQ"
-domains$Domain[grep("Cellulose biosynthesis protein BcsG", domains $Domain)] <- "BcsG"
-domains$Domain[grep("Acyltransferase", domains $Domain)] <- "ATF"
-domains$Domain[grep("Glycosyl transferases group 1", domains $Domain)] <- "GTg1"
-domains$Domain[grep("Polysaccharide biosynthesis protein", domains $Domain)] <- "Pbp"
-domains$Domain[grep("Polysaccharide biosynthesis/export protein", domains $Domain)] <- "Pbep"
-domains$Domain[grep("Polysaccharide biosynthesis C-terminal domain ", domains $Domain)] <- "Pb_C"
-domains$Domain[grep("PgaD", domains $Domain)] <- "pgaD"
+domains$Domain[grep("Glycosyl transferase 4-like", domains$Domain)] <-
+  "GT4_like"
+domains$Domain[grep("Glycosyltransferase like family 2", domains$Domain)] <-
+  "GT2_like"
+domains$Domain[grep("Cellulose-complementing protein A", domains$Domain)] <-
+  "ccpA"
+domains$Domain[grep("deacetylase", domains$Domain)] <- "PDA"
+domains$Domain[grep("Tetratrico", domains$Domain)] <- "T"
+domains$Domain[grep("TPR repeat", domains$Domain)] <- "T"
+domains$Domain[grep("PilZ domain ", domains$Domain)] <- "PilZ"
+domains$Domain[grep("Cellulose synthase", domains$Domain)] <- "CS"
+domains$Domain[grep("Cellulose biosynthesis", domains$Domain)] <-
+  "CS"
+domains$Domain[grep("Cellulose synthase operon protein C C???terminus (BCSC_C)",
+                    domains$Domain)] <- "BCSC_C"
+domains$Domain[grep("Bacterial cellulose synthase subunit", domains$Domain)] <-
+  "BCS"
+domains$Domain[grep("Cellulose biosynthesis protein BcsQ", domains$Domain)] <-
+  "BcsQ"
+domains$Domain[grep("Cellulose biosynthesis protein BcsG", domains$Domain)] <-
+  "BcsG"
+domains$Domain[grep("Acyltransferase", domains$Domain)] <- "ATF"
+domains$Domain[grep("Glycosyl transferases group 1", domains$Domain)] <-
+  "GTg1"
+domains$Domain[grep("Polysaccharide biosynthesis protein", domains$Domain)] <-
+  "Pbp"
+domains$Domain[grep("Polysaccharide biosynthesis/export protein", domains$Domain)] <-
+  "Pbep"
+domains$Domain[grep("Polysaccharide biosynthesis C-terminal domain ",
+                    domains$Domain)] <- "Pb_C"
+domains$Domain[grep("PgaD", domains$Domain)] <- "pgaD"
 ```
 
 Plotting using GGgenes
@@ -262,51 +335,77 @@ domains <- add_midas_tax(domains)
 
 
 
+
 gene_height <- 4
-pdf(f(paste0("gggenes_", paste(filename_psiblast, collapse="_"), "_", min_genes,".pdf")), height=length(unique(genes$operon)), width = 15)
-ggplot(genes, aes(xmin=start, xmax=end, y = title, forward = strand)) + 
-  geom_gene_arrow(arrowhead_height = unit(gene_height, "mm"), 
-                  arrow_body_height = unit(gene_height, "mm"), 
-                  arrowhead_width = unit(5, "mm")) +
-  geom_subgene_arrow(data = genes,
-                     mapping = aes(xmin = start, 
-                                   xmax = end,
-                                   y = title,
-                                   xsubmin = start_target_plot, 
-                                   xsubmax = end_target_plot, 
-                                   fill = Function, 
-                                   forward = strand,
-                                   alpha = Percent_identity),
-                     arrowhead_height = unit(gene_height, "mm"), 
-                     arrow_body_height = unit(gene_height, "mm"),
-                     arrowhead_width = unit(5, "mm"), 
-                     #position = position_nudge(y = 0.3)
-                     ) +
-  geom_text(data=genes %>% mutate(start = (start_target_plot + end_target_plot)/2), 
-            aes(x=start, label = Query_label)) +
-  geom_gene_arrow(data = domains,
-                  mapping = aes(xmin = start2, 
-                                xmax = end2,
-                                y = title,
-                                forward = strand,
-                                fill = Function,
-                                alpha = Percent_identity),
-                  arrowhead_height = unit(gene_height-1, "mm"), 
-                  arrow_body_height = unit(gene_height-1, "mm"),
-                  arrowhead_width = unit(0, "mm"), 
-                  position = position_nudge(y = -0.35)
-                  ) +
-  geom_text(data=domains %>% mutate(start = (start2 + end2)/2), 
-            aes(x=start, label = Domain,  y = title), 
-            nudge_y = -0.35,
-            size=2,
-            angle=8) + 
-  facet_wrap(~ operon, scales = "free", ncol=1) + 
+pdf(f(paste0(
+  "gggenes_",
+  paste(filename_psiblast, collapse = "_"),
+  "_",
+  min_genes,
+  ".pdf"
+)), height = length(unique(genes$operon)), width = 15)
+ggplot(genes, aes(
+  xmin = start,
+  xmax = end,
+  y = title,
+  forward = strand
+)) +
+  geom_gene_arrow(
+    arrowhead_height = unit(gene_height, "mm"),
+    arrow_body_height = unit(gene_height, "mm"),
+    arrowhead_width = unit(5, "mm")
+  ) +
+  geom_subgene_arrow(
+    data = genes,
+    mapping = aes(
+      xmin = start,
+      xmax = end,
+      y = title,
+      xsubmin = start_target_plot,
+      xsubmax = end_target_plot,
+      fill = Function,
+      forward = strand,
+      alpha = Percent_identity
+    ),
+    arrowhead_height = unit(gene_height, "mm"),
+    arrow_body_height = unit(gene_height, "mm"),
+    arrowhead_width = unit(5, "mm"),
+    #position = position_nudge(y = 0.3)
+  ) +
+  geom_text(data = genes %>% mutate(start = (start_target_plot + end_target_plot) /
+                                      2),
+            aes(x = start, label = Query_label)) +
+  geom_gene_arrow(
+    data = domains,
+    mapping = aes(
+      xmin = start2,
+      xmax = end2,
+      y = title,
+      forward = strand,
+      fill = Function,
+      alpha = Percent_identity
+    ),
+    arrowhead_height = unit(gene_height - 1, "mm"),
+    arrow_body_height = unit(gene_height - 1, "mm"),
+    arrowhead_width = unit(0, "mm"),
+    position = position_nudge(y = -0.35)
+  ) +
+  geom_text(
+    data = domains %>% mutate(start = (start2 + end2) / 2),
+    aes(x = start, label = Domain,  y = title),
+    nudge_y = -0.35,
+    size = 2,
+    angle = 8
+  ) +
+  facet_wrap( ~ operon, scales = "free", ncol = 1) +
   scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40)) +
-  guides(alpha = guide_legend(override.aes = list(fill = "black"))) + 
+  guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
   theme_genes() +
-  theme(legend.position = "top",
-        axis.text.y = element_markdown()) +
+  theme(
+    legend.position = "top",
+    axis.text.y = element_markdown(),
+    axis.title.y = element_blank()
+  ) +
   scale_fill_brewer(palette = "Set3")
 dev.off()
 
