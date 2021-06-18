@@ -1,15 +1,17 @@
 ---
 title: "R Notebook"
-output: html_notebook
-editor_options: 
+output:
+  html_document:
+    df_print: paged
+editor_options:
   chunk_output_type: console
 ---
 ```{r}
-knitr::opts_knit$set(root.dir = "path/to/working/directionary")
+
 knitr::opts_chunk$set(
   warning = FALSE,
   error = TRUE,
-  echo = FALSE
+  echo = TRUE
 )
 ```
 
@@ -17,10 +19,9 @@ knitr::opts_chunk$set(
 library(data.table)
 library(tidyverse)
 library(readxl)
-library(gggenes)
 library(glue)
+library(gggenes)
 library(ggtext)
-library(RVerbalExpressions)
 
 # Setting up environment for work folder
 library(here)
@@ -81,9 +82,6 @@ gff <- fread(d("gff.tsv")) %>%
 
 
 ```{r}
-
-
-
 ##### PSI-BLAST results preparation #####
 psiblast <-
   # Loading
@@ -137,26 +135,26 @@ psiblast <-
   # Operon Grouping
   group_by(seqname, ID) %>%
   mutate(
-    prio_prok = replace_na(ProkkaNO - shift(ProkkaNO, 1), # distance to prior hit
+    # max distance + 1 is assigned where no prior or posterior hit is found
+    prio_prok = replace_na(ProkkaNO - shift(ProkkaNO, 1), # prokka distance to prior hit
                            max_dist_gene + 1),
-    # assign NAs to max distance + 1
-    post_prok = replace_na(shift(ProkkaNO, -1) - ProkkaNO, # distance to posterior hit
+    post_prok = replace_na(shift(ProkkaNO, -1) - ProkkaNO, # prokka distance to posterior hit
                            max_dist_gene + 1),
-    # assign NAs to max distance + 1
-    prio_gene = replace_na(start - shift(end, 1), # distance to prior hit
+    prio_gene = replace_na(start - shift(end, 1), # nucleotide distance to prior hit
                            max_dist_gene + 1),
-    # assign NAs to max distance + 1
-    post_gene = replace_na(shift(start, -1) - end,  # distance to posterior hit
-                           max_dist_gene + 1) # assign NAs to max distance + 1
+    post_gene = replace_na(shift(start, -1) - end,  # nucleotide distance to posterior hit
+                           max_dist_gene + 1) 
   ) %>%
+  # Remove those who do not satisfy any of the distance requirements
   filter((prio_prok < max_dist_prok | post_prok < max_dist_prok) &
-           (prio_gene < max_dist_gene | post_gene < max_dist_gene)
+         (prio_gene < max_dist_gene | post_gene < max_dist_gene)
   ) %>%
   ungroup() %>%
+  # If a gene only satisfy distance to posterior hit and not prior, it must be operon start
   mutate(
     operon_place = ifelse(
       (post_prok < max_dist_prok & post_gene < max_dist_gene) &
-        !(prio_prok < max_dist_prok & prio_gene < max_dist_gene),
+     !(prio_prok < max_dist_prok & prio_gene < max_dist_gene),
       "start",
       "."
     ),
@@ -302,6 +300,8 @@ domains$Domain[grep("PgaD", domains$Domain)] <- "pgaD"
 Plotting using GGgenes
 
 ```{r}
+#### Adding midas taxonomy names and modify appearance to be more neat 
+# e.g. Candidatus in cursive instead of Ca_
 add_midas_tax <- function(data) {
   genes %>% 
     select(ID, MiDAS3_6Tax) %>% 
