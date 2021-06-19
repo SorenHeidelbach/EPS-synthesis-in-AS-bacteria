@@ -224,7 +224,7 @@ s &lt;- function(x) {
 <div id="author-soren-h" class="section level2">
 <h2>Author: Soren H</h2>
 <pre class="r"><code># The name of the .txt files
-filename_psiblast &lt;- c(&quot;cellulose1&quot;, &quot;cellulose2&quot;)
+filename_psiblast &lt;- c(&quot;cellulose1&quot;)
 # Folder with interproscan files
 ips_path &lt;- d(&quot;ips&quot;)
 # Percent identity cutoff (&gt; not &gt;=)
@@ -232,11 +232,11 @@ perc_id = 20
 # Max prokka number difference netween operon genes
 max_dist_prok = 8
 # Max nucleotide difference between genes
-max_dist_gene = 8000
+max_dist_gene = 2000
 # Minimum genes in operons
 min_genes = 2
 # Number of genes on each side in figure
-flanking_genes = 3</code></pre>
+flanking_genes = 2</code></pre>
 <pre class="r"><code>magstats &lt;- fread(d(&quot;magstats.tsv&quot;), sep = &quot;\t&quot;)
 
 query_metadata &lt;- excel_sheets(d(&quot;/Query_figur.xlsx&quot;)) %&gt;%
@@ -310,18 +310,18 @@ psiblast &lt;-
     prio_gene = replace_na(start - shift(end, 1), # nucleotide distance to prior hit
                            max_dist_gene + 1),
     post_gene = replace_na(shift(start, -1) - end,  # nucleotide distance to posterior hit
-                           max_dist_gene + 1) 
+                           max_dist_gene + 1)
   ) %&gt;%
   # Remove those who do not satisfy any of the distance requirements
-  filter((prio_prok &lt; max_dist_prok | post_prok &lt; max_dist_prok) &amp;
+  filter((prio_prok &lt; max_dist_prok | post_prok &lt; max_dist_prok) |
          (prio_gene &lt; max_dist_gene | post_gene &lt; max_dist_gene)
   ) %&gt;%
   ungroup() %&gt;%
   # If a gene only satisfy distance to posterior hit and not prior, it must be operon start
   mutate(
     operon_place = ifelse(
-      (post_prok &lt; max_dist_prok &amp; post_gene &lt; max_dist_gene) &amp;
-     !(prio_prok &lt; max_dist_prok &amp; prio_gene &lt; max_dist_gene),
+      (post_prok &lt; max_dist_prok | post_gene &lt; max_dist_gene) &amp;
+     !(prio_prok &lt; max_dist_prok | prio_gene &lt; max_dist_gene),
       &quot;start&quot;,
       &quot;.&quot;
     ),
@@ -416,53 +416,39 @@ domains &lt;-
   mutate(
     Domain = str_replace(Domain, &quot;[gG]lycosyl.*transferase.*[fF]amily &quot;, &quot;GT f&quot;),
     Domain = str_replace(Domain, &quot;[gG]lycosyl.*transferase.*[gG]roup &quot;, &quot;GT g&quot;),
-    Domain = str_replace(
-      Domain,
-      &quot;[gG]lycosyl.*transferase.[lL]ike.[fF]amily&quot;,
-      &quot;GT like f&quot;
-    ),
+    Domain = str_replace(Domain, &quot;[gG]lycosyl.*transferase.[lL]ike.[fF]amily&quot;, &quot;GT like f&quot;),
     Domain = str_replace(Domain, &quot;[gG]lycosyl [hH]ydrolase.*[fF]amily &quot; , &quot;GH&quot;),
     Domain = str_replace(Domain, &quot;[gG]lycosyl [hH]ydrolase&quot; , &quot;GH&quot;),
-    Domain = str_replace(Domain, &quot;[cC]ellulose.*synth.*protein&quot; , &quot;CS &quot;),
-    Domain = str_replace(Domain, &quot;[cC]ellulose.*synth.*&quot; , &quot;CS &quot;),
+    Domain = str_replace(Domain, &quot;.*[cC]ellulose.*synth.*protein[^&#39; &#39;]*&quot; , &quot;CS &quot;),
+    Domain = str_replace(Domain, &quot;.*[cC]ellulose.*synth[^&#39; &#39;]*&quot;, &quot;CS &quot;),
     Domain = str_replace(Domain, &quot; N.terminal domain&quot; , &quot;_N&quot;),
     Domain = str_replace(Domain, &quot; C.terminal domain&quot; , &quot;_C&quot;),
+    Domain = str_replace(Domain, &quot;.*BCSC_C.*&quot;, &quot;bcsC&quot;),
     Domain = str_replace(Domain, &quot;[iI]nitation [fF]actor&quot; , &quot;IF&quot;),
     Domain = str_replace(Domain, &quot;[eE]longation [fF]actor&quot; , &quot;EF&quot;),
-    Domain = str_replace(Domain, &quot;.*[dD]omain of unknown function.*&quot;, &quot;NA&quot;)
+    Domain = str_replace(Domain, &quot;.*Tetratrico.*|.*TPR.*&quot;, &quot;T&quot;),
+    Domain = str_replace(Domain, &quot;.*[dD]omain of unknown function.*&quot;, &quot;NA&quot;),
+    
   )</code></pre>
 <pre><code>## Joining, by = &quot;Target_label&quot;</code></pre>
-<pre class="r"><code>domains$Domain[grep(&quot;Glycosyl transferase 4-like&quot;, domains$Domain)] &lt;-
-  &quot;GT4_like&quot;
-domains$Domain[grep(&quot;Glycosyltransferase like family 2&quot;, domains$Domain)] &lt;-
-  &quot;GT2_like&quot;
-domains$Domain[grep(&quot;Cellulose-complementing protein A&quot;, domains$Domain)] &lt;-
-  &quot;ccpA&quot;
-domains$Domain[grep(&quot;deacetylase&quot;, domains$Domain)] &lt;- &quot;PDA&quot;
-domains$Domain[grep(&quot;Tetratrico&quot;, domains$Domain)] &lt;- &quot;T&quot;
-domains$Domain[grep(&quot;TPR repeat&quot;, domains$Domain)] &lt;- &quot;T&quot;
-domains$Domain[grep(&quot;PilZ domain &quot;, domains$Domain)] &lt;- &quot;PilZ&quot;
-domains$Domain[grep(&quot;Cellulose synthase&quot;, domains$Domain)] &lt;- &quot;CS&quot;
-domains$Domain[grep(&quot;Cellulose biosynthesis&quot;, domains$Domain)] &lt;-
-  &quot;CS&quot;
-domains$Domain[grep(&quot;Cellulose synthase operon protein C C???terminus (BCSC_C)&quot;,
-                    domains$Domain)] &lt;- &quot;BCSC_C&quot;
-domains$Domain[grep(&quot;Bacterial cellulose synthase subunit&quot;, domains$Domain)] &lt;-
-  &quot;BCS&quot;
-domains$Domain[grep(&quot;Cellulose biosynthesis protein BcsQ&quot;, domains$Domain)] &lt;-
-  &quot;BcsQ&quot;
-domains$Domain[grep(&quot;Cellulose biosynthesis protein BcsG&quot;, domains$Domain)] &lt;-
-  &quot;BcsG&quot;
-domains$Domain[grep(&quot;Acyltransferase&quot;, domains$Domain)] &lt;- &quot;ATF&quot;
-domains$Domain[grep(&quot;Glycosyl transferases group 1&quot;, domains$Domain)] &lt;-
-  &quot;GTg1&quot;
-domains$Domain[grep(&quot;Polysaccharide biosynthesis protein&quot;, domains$Domain)] &lt;-
-  &quot;Pbp&quot;
-domains$Domain[grep(&quot;Polysaccharide biosynthesis/export protein&quot;, domains$Domain)] &lt;-
-  &quot;Pbep&quot;
-domains$Domain[grep(&quot;Polysaccharide biosynthesis C-terminal domain &quot;,
-                    domains$Domain)] &lt;- &quot;Pb_C&quot;
-domains$Domain[grep(&quot;PgaD&quot;, domains$Domain)] &lt;- &quot;pgaD&quot;</code></pre>
+<pre class="r"><code>#domains$Domain[grep(&quot;Glycosyl transferase 4-like&quot;, domains$Domain)] &lt;- &quot;GT4_like&quot;
+#domains$Domain[grep(&quot;Glycosyltransferase like family 2&quot;, domains$Domain)] &lt;- &quot;GT2_like&quot;
+#domains$Domain[grep(&quot;Cellulose-complementing protein A&quot;, domains$Domain)] &lt;- &quot;ccpA&quot;
+#domains$Domain[grep(&quot;deacetylase&quot;, domains$Domain)] &lt;- &quot;PDA&quot;
+#domains$Domain[grep(&quot;Tetratrico&quot;, domains$Domain)] &lt;- &quot;T&quot;
+#domains$Domain[grep(&quot;TPR repeat&quot;, domains$Domain)] &lt;- &quot;T&quot;
+#domains$Domain[grep(&quot;PilZ domain &quot;, domains$Domain)] &lt;- &quot;PilZ&quot;
+#domains$Domain[grep(&quot;Cellulose biosynthesis&quot;, domains$Domain)] &lt;- &quot;CS&quot;
+#domains$Domain[grep(&quot;Cellulose synthase operon protein C C???terminus (BCSC_C)&quot;, domains$Domain)] &lt;- &quot;BCSC_C&quot;
+#domains$Domain[grep(&quot;Bacterial cellulose synthase subunit&quot;, domains$Domain)] &lt;- &quot;BCS&quot;
+#domains$Domain[grep(&quot;Cellulose biosynthesis protein BcsQ&quot;, domains$Domain)] &lt;- &quot;bcsQ&quot;
+#domains$Domain[grep(&quot;Cellulose biosynthesis protein BcsG&quot;, domains$Domain)] &lt;- &quot;bcsG&quot;
+#domains$Domain[grep(&quot;Acyltransferase&quot;, domains$Domain)] &lt;- &quot;ATF&quot;
+#domains$Domain[grep(&quot;Glycosyl transferases group 1&quot;, domains$Domain)] &lt;- &quot;GTg1&quot;
+#domains$Domain[grep(&quot;Polysaccharide biosynthesis protein&quot;, domains$Domain)] &lt;- &quot;Pbp&quot;
+#domains$Domain[grep(&quot;Polysaccharide biosynthesis/export protein&quot;, domains$Domain)] &lt;- &quot;Pbep&quot;
+#domains$Domain[grep(&quot;Polysaccharide biosynthesis C-terminal domain &quot;, domains$Domain)] &lt;- &quot;Pb_C&quot;
+#domains$Domain[grep(&quot;PgaD&quot;, domains$Domain)] &lt;- &quot;pgaD&quot;</code></pre>
 <p>Plotting using GGgenes</p>
 <pre class="r"><code>#### Adding midas taxonomy names and modify appearance to be more neat 
 # e.g. Candidatus in cursive instead of Ca_

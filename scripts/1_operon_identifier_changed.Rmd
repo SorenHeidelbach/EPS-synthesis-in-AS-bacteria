@@ -48,7 +48,7 @@ s <- function(x) {
 
 ```{r}
 # The name of the .txt files
-filename_psiblast <- c("cellulose1", "cellulose2")
+filename_psiblast <- c("cellulose2")
 # Folder with interproscan files
 ips_path <- d("ips")
 # Percent identity cutoff (> not >=)
@@ -56,11 +56,11 @@ perc_id = 20
 # Max prokka number difference netween operon genes
 max_dist_prok = 8
 # Max nucleotide difference between genes
-max_dist_gene = 8000
+max_dist_gene = 2000
 # Minimum genes in operons
 min_genes = 2
 # Number of genes on each side in figure
-flanking_genes = 3
+flanking_genes = 2
 ```
 
 
@@ -143,18 +143,18 @@ psiblast <-
     prio_gene = replace_na(start - shift(end, 1), # nucleotide distance to prior hit
                            max_dist_gene + 1),
     post_gene = replace_na(shift(start, -1) - end,  # nucleotide distance to posterior hit
-                           max_dist_gene + 1) 
+                           max_dist_gene + 1)
   ) %>%
   # Remove those who do not satisfy any of the distance requirements
-  filter((prio_prok < max_dist_prok | post_prok < max_dist_prok) &
+  filter((prio_prok < max_dist_prok | post_prok < max_dist_prok) |
          (prio_gene < max_dist_gene | post_gene < max_dist_gene)
   ) %>%
   ungroup() %>%
   # If a gene only satisfy distance to posterior hit and not prior, it must be operon start
   mutate(
     operon_place = ifelse(
-      (post_prok < max_dist_prok & post_gene < max_dist_gene) &
-     !(prio_prok < max_dist_prok & prio_gene < max_dist_gene),
+      (post_prok < max_dist_prok | post_gene < max_dist_gene) &
+     !(prio_prok < max_dist_prok | prio_gene < max_dist_gene),
       "start",
       "."
     ),
@@ -248,53 +248,39 @@ domains <-
   mutate(
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
-    Domain = str_replace(
-      Domain,
-      "[gG]lycosyl.*transferase.[lL]ike.[fF]amily",
-      "GT like f"
-    ),
+    Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
-    Domain = str_replace(Domain, "[cC]ellulose.*synth.*protein" , "CS "),
-    Domain = str_replace(Domain, "[cC]ellulose.*synth.*" , "CS "),
+    Domain = str_replace(Domain, ".*[cC]ellulose.*synth.*protein[^' ']*" , "CS "),
+    Domain = str_replace(Domain, ".*[cC]ellulose.*synth[^' ']*", "CS "),
     Domain = str_replace(Domain, " N.terminal domain" , "_N"),
     Domain = str_replace(Domain, " C.terminal domain" , "_C"),
+    Domain = str_replace(Domain, ".*BCSC_C.*", "bcsC"),
     Domain = str_replace(Domain, "[iI]nitation [fF]actor" , "IF"),
     Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
-    Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA")
+    Domain = str_replace(Domain, ".*Tetratrico.*|.*TPR.*", "T"),
+    Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA"),
+    
   )
 
-domains$Domain[grep("Glycosyl transferase 4-like", domains$Domain)] <-
-  "GT4_like"
-domains$Domain[grep("Glycosyltransferase like family 2", domains$Domain)] <-
-  "GT2_like"
-domains$Domain[grep("Cellulose-complementing protein A", domains$Domain)] <-
-  "ccpA"
-domains$Domain[grep("deacetylase", domains$Domain)] <- "PDA"
-domains$Domain[grep("Tetratrico", domains$Domain)] <- "T"
-domains$Domain[grep("TPR repeat", domains$Domain)] <- "T"
-domains$Domain[grep("PilZ domain ", domains$Domain)] <- "PilZ"
-domains$Domain[grep("Cellulose synthase", domains$Domain)] <- "CS"
-domains$Domain[grep("Cellulose biosynthesis", domains$Domain)] <-
-  "CS"
-domains$Domain[grep("Cellulose synthase operon protein C C???terminus (BCSC_C)",
-                    domains$Domain)] <- "BCSC_C"
-domains$Domain[grep("Bacterial cellulose synthase subunit", domains$Domain)] <-
-  "BCS"
-domains$Domain[grep("Cellulose biosynthesis protein BcsQ", domains$Domain)] <-
-  "BcsQ"
-domains$Domain[grep("Cellulose biosynthesis protein BcsG", domains$Domain)] <-
-  "BcsG"
-domains$Domain[grep("Acyltransferase", domains$Domain)] <- "ATF"
-domains$Domain[grep("Glycosyl transferases group 1", domains$Domain)] <-
-  "GTg1"
-domains$Domain[grep("Polysaccharide biosynthesis protein", domains$Domain)] <-
-  "Pbp"
-domains$Domain[grep("Polysaccharide biosynthesis/export protein", domains$Domain)] <-
-  "Pbep"
-domains$Domain[grep("Polysaccharide biosynthesis C-terminal domain ",
-                    domains$Domain)] <- "Pb_C"
-domains$Domain[grep("PgaD", domains$Domain)] <- "pgaD"
+#domains$Domain[grep("Glycosyl transferase 4-like", domains$Domain)] <- "GT4_like"
+#domains$Domain[grep("Glycosyltransferase like family 2", domains$Domain)] <- "GT2_like"
+#domains$Domain[grep("Cellulose-complementing protein A", domains$Domain)] <- "ccpA"
+#domains$Domain[grep("deacetylase", domains$Domain)] <- "PDA"
+#domains$Domain[grep("Tetratrico", domains$Domain)] <- "T"
+#domains$Domain[grep("TPR repeat", domains$Domain)] <- "T"
+#domains$Domain[grep("PilZ domain ", domains$Domain)] <- "PilZ"
+#domains$Domain[grep("Cellulose biosynthesis", domains$Domain)] <- "CS"
+#domains$Domain[grep("Cellulose synthase operon protein C C???terminus (BCSC_C)", domains$Domain)] <- "BCSC_C"
+#domains$Domain[grep("Bacterial cellulose synthase subunit", domains$Domain)] <- "BCS"
+#domains$Domain[grep("Cellulose biosynthesis protein BcsQ", domains$Domain)] <- "bcsQ"
+#domains$Domain[grep("Cellulose biosynthesis protein BcsG", domains$Domain)] <- "bcsG"
+#domains$Domain[grep("Acyltransferase", domains$Domain)] <- "ATF"
+#domains$Domain[grep("Glycosyl transferases group 1", domains$Domain)] <- "GTg1"
+#domains$Domain[grep("Polysaccharide biosynthesis protein", domains$Domain)] <- "Pbp"
+#domains$Domain[grep("Polysaccharide biosynthesis/export protein", domains$Domain)] <- "Pbep"
+#domains$Domain[grep("Polysaccharide biosynthesis C-terminal domain ", domains$Domain)] <- "Pb_C"
+#domains$Domain[grep("PgaD", domains$Domain)] <- "pgaD"
 ```
 
 Plotting using GGgenes
