@@ -32,15 +32,15 @@ Defining parameter that are used in the filtering of operons later. The script s
 
 ```{r}
 # The name of the .txt files
-filename_psiblast <- c("cellulose1")
+filename_psiblast <- c("succinoglycan")
 # Percent identity cutoff (> not >=)
-perc_id = 20
+perc_id = 20♣
 # Max prokka number difference netween operon genes
 max_dist_prok = 8
 # Max nucleotide difference between genes
 max_dist_gene = 2000
 # Minimum genes in operons
-min_genes = 2
+min_genes = 5
 # Number of genes on each side in figure
 flanking_genes = 2
 ```
@@ -121,8 +121,8 @@ filename_psiblast %>%
                            max_dist_gene + 1)
   ) %>%
   # Remove those who do not satisfy any of the distance requirements
-  filter((prio_prok < max_dist_prok | post_prok < max_dist_prok) |
-         (prio_gene < max_dist_gene | post_gene < max_dist_gene)
+  filter(prio_prok < max_dist_prok | post_prok < max_dist_prok |
+         prio_gene < max_dist_gene | post_gene < max_dist_gene
   ) %>%
   ungroup() %>%
   # If a gene only satisfy distance to posterior hit and not prior, it must be operon start
@@ -172,7 +172,7 @@ filename_psiblast %>%
     # Assigning artificial percent identity to domains
     Percent_identity = ifelse(is.na(Percent_identity), 40, Percent_identity),
     # Order operons from highest bit score to lowest
-    operon = factor(operon, levels = unique(arrange(., -`Bit score`)$operon)),
+    operon = factor(operon, levels = unique(arrange(., -`Bit score`)$operon))
   ) %>%
   fill(MiDAS3_6Tax, .direction = "updown") %>%
   fill(SILVA138Tax, .direction = "updown") %>%
@@ -236,6 +236,7 @@ filename_psiblast %>%
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
     Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
+    Domain = str_replace(Domain, "[gG]lycosyl.*transferase", "GT"),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
     Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
     Domain = str_replace(Domain, ".*[cC]ellulose.*synth.*protein[^' ']*" , "CS "),
@@ -398,13 +399,15 @@ test <- psiblast_filtered %>%
     bit_perc = `Bit score` * Percent_identity / 100
   )
 ggsave(filename = "test.pdf", 
-ggplot(test, aes( x = Query_label, y = bit_perc, col = in_operon)) +
+ggplot(test, aes( x = Query_label, y = E_value, col = in_operon)) +
   geom_boxplot(outlier.colour = NA) +
-  geom_jitter(alpha = 0.4, size = 0.7, position = position_jitterdodge(jitter.width = 0.2)) +
+  geom_jitter(alpha = 0.4, size = 0.7, position = position_jitterdodge(jitter.width = 0.25)) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank(),
         panel.grid.major.x = element_blank()
-  )
+  ) +
+  scale_y_log10()
+
 )
 ```
 
