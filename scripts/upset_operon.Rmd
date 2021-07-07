@@ -20,6 +20,7 @@ To compare which operons where identified by different query oreons. e.g. were a
 ```{r}
 library("knitr")
 library("dplyr")
+library("glue")
 library("rlist")
 library("readr")
 library("ggplot2")
@@ -31,7 +32,7 @@ setwd(here())
 Data from .tsv files is loaded into R. Each polysaccharide dataframe is loaded as an entry to a list. The list is then processed to extract ID, minProk, maxProk and ID2 (unique identifier) for each operon.
 ```{r Loading data}
 # Load all psiblast subset data frames and saves as list
-get_subset_tsv <- function(dir_path="./output/psi_operon_filt_simple/"){
+get_subset_tsv <- function(dir_path="./output/psi_proxi_filt/"){
   psi_subset_list <- list()
   for (i in list.files(dir_path)) {
     psiblast_file_name <- basename(tools::file_path_sans_ext(i))
@@ -230,7 +231,7 @@ metadata$group <- case_when(
   TRUE ~ "other"
 )
 
-pdf(paste0(f.dir, "/UpSet_operon_shared_by_queries_simple_nulO3_eps_3.pdf"), width = 8, height = 12)
+pdf("./figures/upset/UpSet_operon_shared_by_queries.pdf", width = 8, height = 12)
 UpSetR::upset(
   upset_df,
   #sets = order_sets, 

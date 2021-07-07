@@ -5,21 +5,20 @@ library("ggtext")
 library("glue")
 setwd(here())
 
+
+# Create dir for figure
+dir.create("./figures/operon_w_domains", showWarnings = F)
+
+
+plot_operon <-  function(filename_psiblast, name_addon = ""){
 ##---------------------------------------------------------------
 ##      Parameter deifinition (must be same as in filtration)
 ##---------------------------------------------------------------
 # The name of the .txt files
-filename_psiblast <- c("cellulose2")
 filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
 
-# Custom name addon to operon plot pdf
-name_addon <- "test"
-
 # Loading results from proximity filtration
-genes <- fread(glue("./output/psi_operon_full_simple_name/{filename_psiblast_col}.tsv"))
-
-# Create dir for figure
-dir.create("./figures/operon_w_domains", showWarnings = F)
+genes <- fread(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
 
 ##---------------------------------------------------------------
 ##  Loading interproscan data and merging with psiblast operons  
@@ -129,7 +128,6 @@ add_midas_tax <- function(data) {
 genes <- add_midas_tax(genes)
 domains <- add_midas_tax(domains)
 
-
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
 ##---------------------------------------------------------------
@@ -203,6 +201,6 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
          ) +
          scale_fill_brewer(palette = "Set3")
 )
-
+}
 
 

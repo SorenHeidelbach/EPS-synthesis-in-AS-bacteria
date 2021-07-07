@@ -1,4 +1,4 @@
-
+# The database was split for wasier extraction of relevant MAG fasta sequences
 
 DB="/srv/PHN/Projects/bt8cf21/data/MGP1000_HQMAG1083_prot_db_prokv1.14_20200210.faa"
 SPLIT_DB="/srv/PHN/Projects/bt8cf21/MGP1000_HQMAG1083_prot_db_split"

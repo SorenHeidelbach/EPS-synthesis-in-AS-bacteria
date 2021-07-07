@@ -1,0 +1,145 @@
+---
+title: "UpSet_plot"
+author: "SH"
+date: "24/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r , eval=FALSE, include=FALSE}
+source("utilities.R")
+library(rstudioapi)
+knit_with_date(rstudioapi::getActiveDocumentContext()$path)
+```
+
+```{r libraries}
+library(dplyr)
+library(readr)
+#library(rJava)
+library(tidyverse)
+#library(grid)
+library(readxl)
+library(data.table)
+library(UpSetR)
+library(here)
+
+d.pro <- paste0(here(), "/data/processed")
+d.raw <- paste0(here(), "/data/raw")
+o.dir <- paste0(here(), "/output")
+f.dir <- paste0(here(), "/figures")
+s.dir <- paste0(here(), "/script")
+```
+
+
+```{r data selction and settings, echo=FALSE}
+
+# Which raw psiblast result to load
+psiblast_outputs <- c(
+  "cellulose1.txt",
+  "cellulose2.txt"
+)
+
+# Which psiblast_subset dataframes to load (contain operon identified hits)
+psiblast_subset_files <- c(
+  "cellulose1.tsv",
+  "cellulose2.tsv"
+)
+
+# Title of pdf
+pdf_title <- "/TEST.pdf"
+
+# Should the plot only contain hits incorporated into an operon?
+operon_only <- TRUE
+
+# Genes of interest to make sets of and compare
+GOI <- TRUE # Set to TRUE if everything is wanted
+# GOI <- c("gumB", "gumC", "gumJ", "gumH", "gumM", "gumD", "gumI", "gumL", "gumE", "gumG")
+# GOI <- c("pgaC", "icaA", "icaC", "epsH", "epsJ")
+# GOI <- c("pgaA","pgaB", "pgaD", "icaB", "icaD", "epsI", "epsK")
+# GOI <- c("pgaD", "icaD")
+
+```
+
+
+
+```{r data loading}
+# Load raw psiblast results
+psiblast <- data.frame()
+for (q in psiblast_outputs) {
+  psi_path <- paste(d.raw, "/psiblast/", q, sep = "")
+  psiblast <- rbind(
+    psiblast,
+    read.csv(file = psi_path, header = FALSE, sep = "\t", col.names = c("Query_label", "Target_label", "Percent_identity", "align_length", "mismatch", "gap_opens", "start_query", "end_query", "start_target", "end_target", "E_value", "Bit score"))
+  )
+}
+psiblast <- subset(psiblast, Percent_identity >= 20)
+
+# Load subsetted psiblast results
+psiblast_subset <- data.frame()
+for (fil in psiblast_subset_files) {
+  psiblast_subset <- rbind(psiblast_subset, read_tsv(paste0(d.pro, "/psiblast_subset_tsv/", fil)))
+}
+
+# Load MAG statistics
+magstats <- read_tsv(paste0(d.raw, "/magstats.tsv"))
+```
+
+
+```{r data transformation function}
+# Making dataframe formatted for UpSet plot
+get_upset_format <- function(psiblast, GOI) {
+  if (is.logical(GOI)) {
+    GOI <- unique(psiblast$Query_label)
+  }
+  psiblast <- subset(psiblast, Query_label %in% GOI)
+  psi_list <- split(psiblast, f = psiblast$Target_label)
+  upset_DF <- data.frame()
+  for (i in unique(psiblast$Target_label)) {
+    df <- psi_list[[i]]
+    uniqs <- df$Query_label %>% unique()
+    bit_max <- max(df$Bit.score)
+    perc_id_max <- max(df$Percent_identity)
+    in_operon <- i %in% psiblast_subset$Target_label
+    upset_DF <- rbind(upset_DF, as.numeric(c(GOI %in% uniqs, in_operon, bit_max, perc_id_max)))
+    rm(df)
+  }
+  colnames(upset_DF) <- c(GOI, "Operon", "Highest Bitscore", "Highest percent identity")
+  upset_DF$Operon <- ifelse(upset_DF$Operon == 1, TRUE, FALSE)
+  upset_DF
+}
+```
+
+
+```{r main plot}
+upset_DF <- get_upset_format(psiblast, GOI)
+
+# Show only operon detected hits
+if (operon_only) {
+  upset_DF <- subset(upset_DF, upset_DF$Operon)
+}
+
+pdf(paste0(f.dir, pdf_title), width = 8, height = 6)
+UpSetR::upset(upset_DF,
+  number.angles = 0, point.size = 2.5, line.size = 1, text.scale = 1.2,
+  nsets = length(colnames(upset_DF))-3,
+  keep.order = TRUE,
+  mainbar.y.label = "Number of Incommon Hits",
+  sets.x.label = "Total Unique Hits",
+  query.legend = "bottom",
+  group.by = "degree",
+  queries = list(
+    list(
+      query = elements,
+      params = list("Operon", TRUE),
+      color = "#Df5286",
+      active = T,
+      query.name = "Hits Placed In Operons"
+    )
+  ) # ,
+   #boxplot.summary = c("Highest Bitscore", "Highest percent identity")
+)
+dev.off()
+```
+
