@@ -158,8 +158,8 @@ proximity_filtration <- function(filename_psiblast,
   ##---------------------------------------------------------------
   ##                   Writing data to tsv files                   
   ##---------------------------------------------------------------
-  write.table(psi_perc_ID_filt, file = glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"),#_qualfilt_percID{perc_id}.tsv"), 
-              quote = F, sep = "\t", row.names = F)
+  #write.table(psi_perc_ID_filt, file = glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"),#_qualfilt_percID{perc_id}.tsv"), 
+  #            quote = F, sep = "\t", row.names = F)
   #write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}_genes{min_genes}_dist{max_dist_prok}&{max_dist_gene}_percID{perc_id}.tsv"), 
   #            quote = F, sep = "\t", row.names = F)
   write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"), 
