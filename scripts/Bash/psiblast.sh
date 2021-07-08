@@ -26,7 +26,7 @@ Operon_Xanthan.fasta)
 ## PSI-BLAST of all operons in the GFF database from HQ-MAGs
 module load BLAST+/2.11.0-foss-2020b
 for operon in ${operon_fasta[@]}; do
-psiblast -query $WD/"query_input/single_genes/"$operon -db $database -out $WD/psiblast_results/$date/$operon -evalue 0.0001 -qcov_hsp_perc 25 -max_hsps 1 -max_target_seqs 5000 -outfmt 6 -num_iterations 3 -comp_based_stats 1 -num_threads 5
+psiblast -query $WD/"query_input/single_genes/"$operon -db $database -out $WD/psiblast_results/$date/$operon -evalue 0.0001 -qcov_hsp_perc 20 -max_hsps 10 -max_target_seqs 100000 -outfmt 6 -num_iterations 20 -comp_based_stats 1 -num_threads 5
 done
 module purge
 
