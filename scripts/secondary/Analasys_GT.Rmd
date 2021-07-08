@@ -1,0 +1,408 @@
+---
+title: "Analasys of query sequences with many hits"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+```{r}
+knitr::opts_chunk$set(warning = FALSE,
+                      error = TRUE,
+                      echo = TRUE, 
+                      message = FALSE)
+```
+```{r , eval=FALSE, include=FALSE}
+source("utilities.R")
+library(rstudioapi)
+knit_with_date(getwd())
+```
+
+## Goal: To evaluate the content and similarity of sequences with many hits and GT containing genes.
+## Date started: 08-05-2021
+## Author: Soren Heidelbach
+
+```{r libraries and data}
+library(dplyr)
+library(stringr)
+library(UpSetR)
+library(seqinr)
+library(msa)
+library(ape)
+library(data.table)
+library(readxl)
+library(readr)
+library(rlist)
+library(phytools)
+library(here)
+d <- function(x, raw = TRUE){paste0(here(),"/data/",ifelse(raw, "raw/", "processed/"), x)}
+o <- function(x){paste(here(), x, sep = "/output/")}
+f <- function(x){paste(here(), x, sep = "/figures/")}
+s <- function(x){paste(here(), x, sep = "/scripts/")}
+```
+
+Firstly, the PSI-BLAST hits are loaded. This is a quite time consuming process and the results are therefore written to the data folder, such that it is only run once and only loaded afterwards. After this the upset dataframe format is made. This also a **very** time consuming process, there same approach, run once and write and load afterwards. 
+
+Loading of data 
+```{r}
+if (!any(list.files(d("", raw=F)) %in% d("/psiblast_uniq.tsv", raw=F))) {
+  psiblast_outputs <- list.files(d("/psiblast/"))
+  psiblast <- data.frame()
+  for (q in psiblast_outputs) {
+    psi_path <- d(paste0("/psiblast/", q))
+    psiblast <- rbind(
+      psiblast,
+      fread(
+        file = psi_path, 
+        header = FALSE, 
+        sep = "\t", 
+        col.names = c(
+          "Query_label", 
+          "Target_label", 
+          "Percent_identity", 
+          "align_length", 
+          "mismatch", 
+          "gap_opens", 
+          "start_query", 
+          "end_query", 
+          "start_target", 
+          "end_target", 
+          "E_value", 
+          "Bit score"
+        ),
+        fill= TRUE
+      )
+    )
+    psiblast <- subset(psiblast, Percent_identity > 20)
+    print(q)
+  }
+  
+  # Get best hit of each query-target pair.
+  psiblast_uniq <- psiblast %>% 
+    group_by(Query_label, Target_label) %>% 
+    filter(E_value == min(E_value)) %>% 
+    filter(row_number() == 1)
+  write_tsv(psiblast_uniq, file = d("/psiblast_uniq.tsv", raw=F))
+} else (
+  psiblast_uniq <- read_tsv(d("/psiblast_uniq.tsv", raw=F))
+)
+```
+
+Defining function that are used several times
+
+```{r}
+# Making dataframe formatted for UpSet plot
+get_upset_from_psiblast <- function(psiblast) {
+  genes <- unique(psiblast$Query_label)
+  psiblast <- as.data.table(psiblast)
+  upset_df <- psiblast[, list(Query_label, Target_label)][
+                       , (genes) := as.list(genes %in% Query_label), by = Target_label][
+                       , `:=`(Query_label = NULL, Target_label = NULL)]
+  upset_df <- upset_df*1
+  return(upset_df)
+}
+write_query_fasta_from_genes <- function(genes) {
+  query_fasta <- list()
+  for (i in list.files(d("/Queries_final/"))) {
+    for (j in list.files(d(paste0("/Queries_final/", i)))) {
+      path <- d(paste0("/Queries_final/", i, "/", j))
+      suppressWarnings(
+        query_fasta <- append(query_fasta, read.fasta(path))
+      )
+    }
+  }
+  query_fasta_top <- query_fasta[genes]
+  write.fasta(
+    query_fasta_top, 
+    names = names(query_fasta_top), 
+    file.out = o("/temp.fa"))
+}
+```
+
+
+Evaluation of the top 10 hits. The top 10 most abundant hits are investigated, what are they, what are their function and what queries are they from.
+
+```{r, eval=T, include=T}
+# Get top 10 queries by number of hits
+n_hits <- table(psiblast_uniq$Query_label) %>% as.data.frame()
+psiblast_top <- psiblast_uniq %>% 
+  subset(Query_label %in% n_hits[n_hits$Freq %in% tail(sort(n_hits$Freq), 10),"Var1"])
+upset_top <- get_upset_from_psiblast(psiblast_top)
+
+
+UpSetR::upset(upset_top, nsets = ncol(upset_top),
+  number.angles = 0, point.size = 2.5, line.size = 1, text.scale = 1.2,
+  order.by = "freq",
+  mainbar.y.label = "Number of Incommon Hits",
+  sets.x.label = "Total Unique Hits"
+)
+```
+
+The shows that pretty much all hits are shared by all top 10 queries. Weirdly, there seems to be a cap on the number of identified sequence (maybe psiblast -max_target_seq has been hit, as here only one hit pr. query/target pair is reported?). 
+
+An MSA and phylogenetic tree is made to investigate similarities between these queries.
+
+```{r, eval=T, include=T}
+
+# MSA of sequences
+write_query_fasta_from_genes(colnames(upset_top))
+seqs <- readAAStringSet(o("/temp.fa"))
+MSA <- msa(
+  seqs,  
+  method = "Muscle", 
+  order="aligned")
+
+# Printing MSA to .tex file
+setwd(o(""))
+msaPrettyPrint(
+  MSA,
+  file = "MSA_top10_Musc.tex",
+  output="tex", 
+  showNames="left",
+  showLogo="top", 
+  askForOverwrite=FALSE, 
+  verbose=FALSE,
+)
+setwd(s(""))
+# Phylogenetic tree
+MSA <- msaConvert(MSA, type="seqinr::alignment")
+dist.matrix <- dist.alignment(MSA, "identity") %>% as.matrix ()
+tree <- njs(dist.matrix)
+plot.phylo(
+  tree, 
+  srt=0, 
+  adj=0, 
+  show.node.label = T,
+  no.margin = T,
+  align.tip.label = 3
+)
+```
+
+Next the GT and synthase (SY) genes investigated
+
+```{r}
+# Loading metadata of query genes
+query_metadata <- excel_sheets(d("/Query_figur.xlsx")) %>% 
+  sapply(function(X) read_xlsx(d("/Query_figur.xlsx"), sheet = X, skip = 1), USE.NAMES = T) %>% 
+  lapply(as.data.frame) %>% 
+  `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>% 
+  rbindlist()
+query_metadata_GT <- subset(query_metadata, Function %in% c("GT", "SY"))
+
+
+```
+
+Firstly, an upset plot is made to evaluate to incommen hits of all the gt containing genes.
+
+```{r}
+# Subsetting psiblast to gt only
+psiblast_gt <- subset(psiblast_uniq, Query_label %in% query_metadata_GT$Genename)
+upset_gt <- get_upset_from_psiblast(psiblast_gt)
+
+UpSetR::upset(upset_gt,  nsets = ncol(upset_gt),
+  number.angles = 0, point.size = 1, line.size = 0.7, text.scale = 0.8,
+  order.by = "freq",
+  mainbar.y.label = "Number of Incommon Hits",
+  sets.x.label = "Total Unique Hits"
+)
+```
+
+
+Next the sequences of the queries are aligned and evaluated in a phylogenetic tree and in an MSA. 
+
+```{r}
+write_query_fasta_from_genes(colnames(upset_gt))
+```
+
+```{r}
+# MSA of sequences
+seqs <- readAAStringSet(o("/temp.fa"))
+MSA <- msa(
+  seqs,  
+  method = "ClustalOmega", 
+  order="aligned")
+
+# Printing MSA to .tex file
+setwd(o(""))
+msaPrettyPrint(
+  MSA,
+  file = "MSA_gt_ClusO.tex",
+  output="tex", 
+  showNames="left",
+  showLogo="top", 
+  askForOverwrite=FALSE, 
+  verbose=FALSE,
+)
+setwd(s(""))
+# Phylogenetic tree
+MSA <- msaConvert(MSA, type="seqinr::alignment")
+dist.matrix <- dist.alignment(MSA, "identity") %>% as.matrix ()
+tree <- njs(dist.matrix)
+plot.phylo(
+  tree, 
+  srt=0, 
+  adj=0, 
+  show.node.label = T,
+  no.margin = T,
+  align.tip.label = 3
+)
+nodelabels()
+```
+
+
+From the MSA, very little conservation of any amino acids across all groups is observed, although some subset of GT's/synthases have high conservations. Evaluating the tree, it is obvious that dps, sps and gel genes cluster together, which is kinda expected, as they are all sphingans. Also exo and sle genes are grouped together. 
+The crdS gene is also placed along ith the bcs genes. To further evaluate these observations, the general tree is subsetted (by the nodelabels in plot) and the tip labels used to perform new MSA and plot new trees (from the new MSA)
+
+A function is defined that extract a subtree by the specified node, which is displayed in the above tree.
+
+```{r}
+# Function that extract sub tree from node label
+get_subtree_from_node_label <- function(tree, node) {
+  sub_trees <- subtrees(tree, wait = T)
+  sub_tree <- sub_trees %>% lapply(
+    function(x) {
+      if(x$name == node) {
+        return(x)
+      } else {
+        return(NULL)
+      }
+    }
+  )
+  sub_tree <- sub_tree[!(sub_tree %>% lapply(is.null) %>% unlist())] %>% `[[`(1)
+}
+```
+
+After this a function is made that perform the general analasys used so far (UpSet, MSA & tree) on the subtree specified from the node label. 
+
+```{r}
+msa_tree_analasys_subtree_node <- function(tree, node, upset_df) {
+  sub_tree <- get_subtree_from_node_label(tree, node)
+  upset_df <- as.data.frame(upset_df)
+  upset_gt_n <- upset_df[,sub_tree$tip.label]
+  upset_gt_n <- upset_gt_n[rowSums(upset_gt_n) > 1,]
+  # Upset plot
+  print(UpSetR::upset(upset_gt_n,
+    number.angles = 0, point.size = 1, line.size = 0.7, text.scale = 0.8,
+    #nsets = length(colnames(upset_gt_n)),
+    order.by = "freq",
+    mainbar.y.label = "Number of Incommon Hits",
+    sets.x.label = "Total Unique Hits"
+  ))
+  
+  # Subsetting and loading fasta files
+  write_query_fasta_from_genes(colnames(upset_gt_n))
+  suppressWarnings(
+    {myseqs <- readAAStringSet(o("/temp.fa"), )}
+  )
+
+  MSA <- msaMuscle(myseqs)
+  
+  # tex file of MSA
+  msaPrettyPrint(
+    MSA, 
+    output="tex", 
+    showNames="left", 
+    file = paste0("MSA_gt_",
+                 {paste(sub_tree$tip.label, collapse="_") %>% substr(1, 14)} ,
+                 "_Musc.tex"),
+    showLogo="top", 
+    askForOverwrite=FALSE, 
+    verbose=FALSE
+  )
+  # New tree
+  MSA <- msaConvert(MSA, type="seqinr::alignment")
+  dist_matrix <- dist.alignment(MSA, "identity") %>% 
+    as.matrix ()
+  rm(MSA, upset_gt_n)
+  tree <- njs(dist_matrix)
+  tree <- midpoint.root(tree)
+  plot.phylo(tree, srt=0, adj=0, show.node.label = T,
+           no.margin = T,,
+           align.tip.label = 3)
+}
+msa_tree_analasys_subtree_node(tree, "54", upset_gt)
+msa_tree_analasys_subtree_node(tree, "87", upset_gt)
+msa_tree_analasys_subtree_node(tree, "83", upset_gt)
+msa_tree_analasys_subtree_node(tree, "62", upset_gt)
+msa_tree_analasys_subtree_node(tree, "60", upset_gt)
+msa_tree_analasys_subtree_node(tree, "68", upset_gt)
+msa_tree_analasys_subtree_node(tree, "64", upset_gt)
+msa_tree_analasys_subtree_node(tree, "63", upset_gt)
+msa_tree_analasys_subtree_node(tree, "55", upset_gt)
+msa_tree_analasys_subtree_node(tree, "53", upset_gt)
+
+
+
+```
+
+
+
+
+
+Analasys of non GT and SY genes
+
+```{r}
+query_metadata_non_GT <- subset(query_metadata, !(Function %in% c("GT", "SY", "Prim_GT", "Contig")))
+
+
+# Subsetting psiblast to gt only
+psiblast_non_gt <- subset(psiblast_uniq, Query_label %in% query_metadata_non_GT$Genename)
+upset_non_gt <- get_upset_from_psiblast(psiblast_non_gt)
+function_order <- c("REG",   "Export", "Polymerization","PE" ,"ABC",  "PS", "MOD", "Hydrolase", "Lyase", "Branch")
+pdf(file = f("/upset_non_GT_SY_prim_GT.pdf"))
+UpSetR::upset(upset_non_gt,  nsets = ncol(upset_non_gt), nintersects = 150,
+  number.angles = -40, point.size = 0.5, line.size = 0.5, text.scale = 0.4,mb.ratio = c(0.45, 0.55),
+  sets = arrange(query_metadata_non_GT, factor(Function, levels=function_order))$Genename %>% `[`(. %in% colnames(upset_non_gt)) %>% unique(),
+  keep.order = TRUE, 
+  order.by = "freq",
+  mainbar.y.label = "Number of Incommon Hits",
+  sets.x.label = "Total Unique Hits",
+    set.metadata = list(
+    data = query_metadata_non_GT,
+    plots = list(
+      list(
+       type = "matrix_rows", 
+       column = "Function", 
+       colors = c(
+         ABC = '#dccede',
+         PE = '#C8DBC8',
+         Export = '#EDE9EB',
+         Branch = '#ffcb85',
+         MOD = '#deb887',
+         Hydrolase = '#fcdbbb', 
+         Lyase = '#FBDADA',  
+         GT = '#82ACB9',
+         Polymerization = '#a1c2a1',
+         Prim_GT = '#ECDED5',
+         SY = '#B3CFD0',
+         `NA` = '#FFFFFF',
+         PS = '#D68A8A', 
+         REG = '#f5f5c6'
+         ), 
+       alpha = 1)
+      )
+  )
+)
+dev.off()
+
+```
+
+
+
+
+
+Upset plot algE, bcsC, pgaA, crdA, crdC, pelB
+
+```{r}
+
+pdf(f("upset_export.pdf"))
+psiblast_on_demand <- subset(psiblast_uniq, Query_label %in% c("algE", "bcsCI", "pgaA", "crdA", "crdC", "pelB"))
+upset_on_demand <- get_upset_from_psiblast(psiblast_on_demand)
+UpSetR::upset(
+  upset_on_demand, nsets = ncol(psiblast_on_demand)
+)
+dev.off()
+```
+
+
+

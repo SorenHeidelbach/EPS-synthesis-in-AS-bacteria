@@ -14,34 +14,25 @@ knitr::opts_chunk$set(fig.width = 8,
                       message = FALSE)
 
 ```
-```{r , eval=FALSE, include=FALSE}
-source("utilities.R")
-library(rstudioapi)
-knit_with_date(rstudioapi::getActiveDocumentContext()$path)
-```
 
 ## Script Goal
 To compare which operons where identified by different query oreons. e.g. were any operons found by cellulose1 query also found by cellulose 2 query. 
 ```{r}
-library(knitr)
-library(dplyr)
-library(rlist)
-library(readr)
-library(ggplot2)
-library(UpSetR)
-library(here)
-
-d.pro <- paste0(here(), "/data/processed")
-d.raw <- paste0(here(), "/data/raw")
-o.dir <- paste0(here(), "/output")
-f.dir <- paste0(here(), "/figures")
-s.dir <- paste0(here(), "/script")
+library("knitr")
+library("dplyr")
+library("glue")
+library("rlist")
+library("readr")
+library("ggplot2")
+library("UpSetR")
+library("here")
+setwd(here())
 ```
 
 Data from .tsv files is loaded into R. Each polysaccharide dataframe is loaded as an entry to a list. The list is then processed to extract ID, minProk, maxProk and ID2 (unique identifier) for each operon.
 ```{r Loading data}
 # Load all psiblast subset data frames and saves as list
-get_subset_tsv <- function(dir_path=paste0(d.pro, "/psiblast_subset_tsv/")){
+get_subset_tsv <- function(dir_path="./output/psi_proxi_filt/"){
   psi_subset_list <- list()
   for (i in list.files(dir_path)) {
     psiblast_file_name <- basename(tools::file_path_sans_ext(i))
@@ -73,7 +64,7 @@ psiblast_tsv_list$NulO_merged <-  subset(psiblast_tsv_list$NulO_merged, ID2 %in%
 operon_info <- list()
 for (i in names(psiblast_tsv_list)) {
   operon_info[[i]] <- psiblast_tsv_list[[i]] %>% 
-    group_by(ID, OperonNO, ID2) %>% 
+    group_by(ID, ID2) %>% 
     dplyr::summarise(minProk = min(as.numeric(ProkkaNO)),
               maxProk = max(as.numeric(ProkkaNO)))
 }
@@ -240,10 +231,11 @@ metadata$group <- case_when(
   TRUE ~ "other"
 )
 
-pdf(paste0(f.dir, "/UpSet_operon_shared_by_queries_simple_nulO3_eps_3.pdf"), width = 8, height = 12)
+pdf("./figures/upset/UpSet_operon_shared_by_queries.pdf", width = 8, height = 12)
 UpSetR::upset(
   upset_df,
-  sets = order_sets, nintersects = 80,
+  #sets = order_sets, 
+  nintersects = 10,
   order.by = "freq",
   sets.x.label = "Total Hits",
   keep.order = TRUE, 
