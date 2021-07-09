@@ -3,7 +3,7 @@
 
 Running condittions for psiblast can be found in *./scripts/bash/psiblast.sh*
 
-The main filtration and data preparation file can be found in main.R. The following scripts are pulled upon there:
+The main filtration and data preparation file can be found in *main.R*. The following scripts are exwecuted through *main.R*:
 *generate_magstats.R*, *generate_gff.R*, *proximity_filtration.R* and *plot_operon.R*
 
 
