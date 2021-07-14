@@ -38,7 +38,8 @@ proximity_filtration <- function(filename_psiblast,
                                  flanking_genes = 2,
                                  magstats = magstats.,
                                  query_metadata = query_metadata.,
-                                 gff = gff.
+                                 gff = gff.,
+                                 exclude_gene = ""
                                  ){
   filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
 
@@ -57,6 +58,7 @@ proximity_filtration <- function(filename_psiblast,
         "start_target", "end_target", "E_value", "Bit score")
     ) %>%
     bind_rows() %>%
+    filter(!(Query_label %in% exclude_gene)) %>% 
     # ASSIGNING psi_raw
     assign(x = "psi_raw", value = ., pos = 1) %>% 
   ##---------------------------------------------------------------
@@ -85,13 +87,9 @@ proximity_filtration <- function(filename_psiblast,
     group_by(seqname, ID) %>%
     # define gene and prokka distance to posterior and prior psiblast hit
     mutate(prio_prok = ProkkaNO - shift(ProkkaNO) < max_dist_prok,
-           post_prok = shift(ProkkaNO, -1) - ProkkaNO < max_dist_prok,
            prio_gene = start - shift(end, 1) < max_dist_gene,
-           post_gene = shift(start, -1) - end < max_dist_gene,
            prio_prok = replace_na(prio_prok, FALSE),
-           post_prok = replace_na(post_prok, FALSE),
-           prio_gene = replace_na(prio_gene, FALSE),
-           post_gene = replace_na(post_gene, FALSE)
+           prio_gene = replace_na(prio_gene, FALSE)
            ) %>%
     ungroup() %>% 
     # If a gene only satisfy distance to prior hit and not posterior = start
@@ -101,7 +99,7 @@ proximity_filtration <- function(filename_psiblast,
     # Operon number of genes filtering
     group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes) %>%
-    select(-prio_prok, -prio_gene, -post_prok, -post_gene) %>% 
+    select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 
     group_by(ID) %>% 

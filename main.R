@@ -35,7 +35,7 @@ proximity_filtration("gellan", min_genes = 6)
 proximity_filtration("S88", min_genes = 6)
 proximity_filtration("NulO_merged", min_genes = 2)
 proximity_filtration("HA_Pasteurella", min_genes = 1, perc_id = 33)
-proximity_filtration("HA_streptococcus")
+proximity_filtration("HA_streptococcus", min_genes = 3, exclude_gene = c("glmU", "pgi"))
 
 # Plotting of operons from results, remember to run ips berfore this
 if(!"ips" %in% list.files("./data/raw/")) "Download/move 'ips' folder with interproscan results to data/raw/"

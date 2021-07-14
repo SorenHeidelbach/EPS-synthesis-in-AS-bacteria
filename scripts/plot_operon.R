@@ -125,8 +125,12 @@ add_midas_tax <- function(data) {
                               replacement = " (Subgroup \\1)"),
     )
 }
-genes <- add_midas_tax(genes)
-domains <- add_midas_tax(domains)
+genes <- add_midas_tax(genes) %>% 
+  mutate(Query_label = replace_na(Query_label, " "))
+domains <- add_midas_tax(domains) %>% 
+  filter(!is.na(ID2))
+
+
 
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
@@ -166,7 +170,7 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
                                                                        signif(Percent_identity, digits = 2),
                                                                        "%"))),
                    aes(x = start_target_plot, label = Percent_identity),
-                   nudge_x = 200, nudge_y = 0.16, size = 2) +
+                    nudge_y = 0.16, size = 2) +
          # Domains boxes
          geom_gene_arrow(
            data = domains,
