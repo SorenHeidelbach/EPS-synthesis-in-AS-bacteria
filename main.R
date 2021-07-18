@@ -8,7 +8,7 @@ if(!"gff.tsv" %in% list.files("./data/raw/")) {
   if(!"gff_files_reduced_out" %in% list.files("./data/raw/")){
     print("Download/move 'gff_files_reduced_out' folder to 'data/raw/'")
   } else {
-    print('Please wait while "gff.tsv" is generated')
+    print('Please wait while gff.tsv is generated')
     source("./scripts/generate_gff.R")
     rm(gff)
   }
@@ -35,14 +35,14 @@ proximity_filtration("pel_merged", min_genes = 3)
 proximity_filtration("cellulose1")
 proximity_filtration("cellulose2")
 proximity_filtration("succinoglycan", min_genes = 6)
-proximity_filtration("xanthan", min_genes = 4)
+proximity_filtration("xanthan", min_genes = 4, )
 proximity_filtration("curdlan", min_genes = 1, perc_id = 30)
 proximity_filtration("pnag_pga")
 proximity_filtration("pnag_ica")
 proximity_filtration("pnag_eps", min_genes = 3) # changed from 2
-proximity_filtration("diutan", min_genes = 6)
-proximity_filtration("gellan", min_genes = 6)
-proximity_filtration("S88", min_genes = 6)
+proximity_filtration("diutan", min_genes = 6, exclude_gene = c("rmlB", "rmlC", "rmlD"))
+proximity_filtration("gellan", min_genes = 6,exclude_gene = c("rmlB", "rmlC", "rmlD"))
+proximity_filtration("S88", min_genes = 6, exclude_gene = c("rmlB", "rmlC", "rmlD"))
 proximity_filtration("NulO_merged", min_genes = 2)
 proximity_filtration("HA_Pasteurella", min_genes = 1, perc_id = 33)
 proximity_filtration("HA_streptococcus", min_genes = 3, exclude_gene = c("glmU", "pgi"))

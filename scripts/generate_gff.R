@@ -1,5 +1,4 @@
 library("here")
-library("data.table")
 library("tidyverse")
 setwd(here())
 
