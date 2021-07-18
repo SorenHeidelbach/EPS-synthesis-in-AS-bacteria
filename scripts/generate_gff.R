@@ -7,17 +7,17 @@ setwd(here())
 #        Defining the gffRead function for loading gff data       
 #-----------------------------------------------------------------
 gffRead <- function(gffFile){
-  gff <- fread( list.files("data/raw/gff_files_reduced_out", 
-                           full.names = TRUE)[1], header=F, )
+  gff <- read.delim(gffFile, header=F, comment.char="#")
   colnames(gff) = c("seqname", "source", "feature", "start", "end",
                     "score", "strand", "frame", "attributes")
   gff <- gff[complete.cases(gff), ]
+  
   gff <- gff %>%
-    separate(attributes, c("prokkaID", "attributes"), 
-             sep = ";", extra = "merge") %>%
+    separate(attributes, c("prokkaID", "attributes"), sep = ";", extra = "merge") %>%
     separate(prokkaID, c("ID1", "ProkkaNO"), sep = -5)
-  return(gff)
-}
+  
+  
+  return(gff)}
 
 #-----------------------------------------------------------------
 #          Using the gffRead function to import gff files         

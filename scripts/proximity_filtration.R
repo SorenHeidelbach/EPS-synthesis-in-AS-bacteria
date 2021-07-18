@@ -74,8 +74,8 @@ proximity_filtration <- function(filename_psiblast,
     mutate(ProkkaNO = as.numeric(ProkkaNO)) %>%
     mutate(ID = str_sub(ID, start = 1, end = -2)) %>% 
     # Merging
-    left_join(gff, #by = c("Target_label", "ProkkaNO", "ID"),
-              keep = FALSE) %>%
+    inner_join(gff#, by = c("Target_label", "ProkkaNO", "ID")
+               ) %>%
     left_join(magstats, by = "ID", keep = FALSE) %>%
     left_join(query_metadata[, c("Genename", "Function")], 
               by = c("Query_label" = "Genename"), keep=FALSE)  %>%
@@ -156,12 +156,17 @@ proximity_filtration <- function(filename_psiblast,
   ##---------------------------------------------------------------
   ##                   Writing data to tsv files                   
   ##---------------------------------------------------------------
+  dir.create("./output/psi_percID_filt", showWarnings = FALSE)
   write.table(psi_perc_ID_filt, file = glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"),#_qualfilt_percID{perc_id}.tsv"), 
               quote = F, sep = "\t", row.names = F)
+  
+  dir.create("./output/psi_proxi_filt", showWarnings = FALSE)
   #write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}_genes{min_genes}_dist{max_dist_prok}&{max_dist_gene}_percID{perc_id}.tsv"), 
   #            quote = F, sep = "\t", row.names = F)
   write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"), 
               quote = F, sep = "\t", row.names = F)
+  
+  dir.create("./output/psi_operon_full", showWarnings = FALSE)
   #write.table(psi_operon_full, file = glue("./output/psi_operon_full/{filename_psiblast_col}_genes{min_genes}_dist{max_dist_prok}&{max_dist_gene}_percID{perc_id}_flank{flanking_genes}.tsv"), 
   #            quote = F, sep = "\t", row.names = F)
   write.table(psi_operon_full, file = glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"), 
@@ -171,7 +176,7 @@ proximity_filtration <- function(filename_psiblast,
   ##  Export fasta files of identified genes, with surrounding genes  
   ##------------------------------------------------------------------
   for (f in unique(psi_operon_full$ID)){
-    dir.create(glue("./data/processed/fasta_output/{filename_psiblast_col}"), showWarnings = F)
+    dir.create(glue("./data/processed/fasta_output/{filename_psiblast_col}"), showWarnings = FALSE, recursive = TRUE)
     read.fasta(file = glue("./data/raw/MGP1000_HQMAG1083_prot_db_split/{f}.faa"), 
                             seqtype="AA", 
                             as.string=TRUE, 

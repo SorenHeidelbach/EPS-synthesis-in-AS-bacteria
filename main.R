@@ -1,15 +1,25 @@
 library("here")
 setwd(here::here())
 
+dir.create("./data/raw", recursive = TRUE, showWarnings = FALSE)
+dir.create("./data/processed", recursive = TRUE, showWarnings = FALSE)
+
 if(!"gff.tsv" %in% list.files("./data/raw/")) {
   if(!"gff_files_reduced_out" %in% list.files("./data/raw/")){
     print("Download/move 'gff_files_reduced_out' folder to 'data/raw/'")
-  } else source("./scripts/generate_gff.R")
+  } else {
+    print('Please wait while "gff.tsv" is generated')
+    source("./scripts/generate_gff.R")
+    rm(gff)
+  }
 }
 if(!"magstats.tsv" %in% list.files("./data/raw/")) {
   if(!"MAG_statistics_STABLEX_20200213.tsv" %in% list.files("./data/raw/")){
     print("Download/move 'MAG_statistics_STABLEX_20200213.tsv' to 'data/raw/'")
-  } else source("./scripts/generate_magstats.R")
+  } else {
+    source("./scripts/generate_magstats.R")
+    rm(magstats)
+  }
 }
 if(!"Query_figur.xlsx" %in% list.files("./data/raw/")) "Download/move 'Query_figur.xlsx' to data/raw/"
 if(!"MGP1000_HQMAG1083_prot_db_split" %in% list.files("./data/raw/")) "Download/move 'MGP1000_HQMAG1083_prot_db_split' folder to data/raw/"
