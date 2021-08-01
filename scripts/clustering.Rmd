@@ -35,7 +35,7 @@ use_condaenv("py3.8", required = TRUE)
 
 
 ```{r}
-query <-  "cellulose1"
+query <-  "gellan"
 
 psi_id_filt <- read.delim(glue("./output/psi_percID_filt/{query}.tsv"))
 psi_proxi_filt <- read.delim(glue("./output/psi_proxi_filt/{query}.tsv"))
@@ -63,14 +63,14 @@ PCA_pre_proces <-  psi_id_filt %>%
 PCA_model <- PCA_pre_proces %>% 
   select(mean_bit, mean_cov, mean_perc_id, size_uniq, repetition) %>% 
   prcomp(scale. = TRUE, center = TRUE)
-PCA_data = PCA_model$x[,c("PC1", "PC2")]
+PCA_data = PCA_model$x[,c("PC1", "PC2", "PC3")]
   
-ggbiplot(PCA_model, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
+ggbiplot(PCA_model, choices = 1:2, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
   theme_bw() +
   ggtitle(glue("{query}, colored by number of unique genes in operon"))
 
 kmeans_PCA <- kmeans(PCA_model$x, 2)
-ggbiplot(PCA_model, groups = as.character(kmeans_PCA$cluster), alpha = 0.4) + 
+ggbiplot(PCA_model, choices = 2:3, groups = as.character(kmeans_PCA$cluster), alpha = 0.4) + 
   theme_bw() +
   ggtitle(glue("{query}, colored by kmeans clustering, n = 2"))
  
@@ -94,19 +94,20 @@ ms.fit(PCA_data)
 
 
 ```{r}
+dir.create("./figures/clustering")
 PCA_data_labels <- PCA_data %>% 
   as_tibble() %>% 
   cbind(as.factor(py$ms$labels_)) %>% 
-  setNames(c("PC1", "PC2", "mean_shift"))
+  cbind(PCA_pre_proces) %>% 
+  mutate (size_uniq = as.character(size_uniq))
+colnames(PCA_data_labels)[4] <- "labels"
 
-
-ggplot(PCA_data2, aes(x = PC1, y = PC2, col = mean_shift)) +
-  geom_point(alpha = 0.3) +
+ggsave(filename = glue("./figures/clustering/{query}_meanshift.pdf"), device = "pdf",
+ggplot(PCA_data_labels, aes(x = PC2, y = PC3, col = labels, shape = size_uniq)) +
+  geom_point(aes(), alpha = 0.6) +
+  scale_shape_manual(values = c(1:4, 16, 17, 18, 19)) +
   theme_bw() +
-  ggtitle (glue("{query}, colored by mean shift clustering (bandwith selected with quantile = 0.3)"))
+  ggtitle (glue("{query}, colored by mean shift clustering"))
+)
 ```
-
-
-
-
 
