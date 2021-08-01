@@ -1,0 +1,112 @@
+---
+title: "Clustering"
+author: "SorenH"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```yaml
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+```
+
+
+
+```{r, setup}
+library("reticulate", quietly = TRUE, warn.conflicts = FALSE)
+library("here", quietly = TRUE, warn.conflicts = FALSE)
+library("glue", quietly = TRUE, warn.conflicts = FALSE)
+library("ggplot2", quietly = TRUE, warn.conflicts = FALSE)
+library("tidyverse", quietly = TRUE, warn.conflicts = FALSE)
+library("ggbiplot", quietly = TRUE, warn.conflicts = FALSE)
+setwd(here::here())
+knitr::opts_knit$set(root.dir = here::here(),
+                     message = FALSE,
+                     warning = FALSE,
+                     echo = FALSE)
+use_condaenv("py3.8", required = TRUE)
+```
+
+
+
+```{r}
+query <-  "cellulose1"
+
+psi_id_filt <- read.delim(glue("./output/psi_percID_filt/{query}.tsv"))
+psi_proxi_filt <- read.delim(glue("./output/psi_proxi_filt/{query}.tsv"))
+
+
+PCA_pre_proces <-  psi_id_filt %>% 
+  mutate(coverage = (end_target - start_target) / (end - start)/3,) %>%
+  group_by(operon) %>% 
+  dplyr::summarize(
+    mean_bit = mean(Bit.score),
+    mean_cov = mean(coverage),
+    mean_perc_id = mean(Percent_identity),
+    size = length(coverage),
+    size_uniq = length(unique(Query_label)),
+    repetition = size_uniq/size
+    ) %>%
+  merge(aggregate(Target_label ~ operon, data=psi_id_filt, head, 1), by="operon")  %>% 
+  mutate(
+    in_operon = case_when(
+      Target_label %in% psi_proxi_filt$Target_label ~ "Proximity Filtration",
+      TRUE ~ "Removed"),
+    ) %>%  
+  filter(size > 0 & size < 15)
+
+PCA_model <- PCA_pre_proces %>% 
+  select(mean_bit, mean_cov, mean_perc_id, size_uniq, repetition) %>% 
+  prcomp(scale. = TRUE, center = TRUE)
+PCA_data = PCA_model$x[,c("PC1", "PC2")]
+  
+ggbiplot(PCA_model, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
+  theme_bw() +
+  ggtitle(glue("{query}, colored by number of unique genes in operon"))
+
+kmeans_PCA <- kmeans(PCA_model$x, 2)
+ggbiplot(PCA_model, groups = as.character(kmeans_PCA$cluster), alpha = 0.4) + 
+  theme_bw() +
+  ggtitle(glue("{query}, colored by kmeans clustering, n = 2"))
+ 
+```
+
+
+```{python}
+import numpy as np
+
+from sklearn.cluster import MeanShift, estimate_bandwidth
+from sklearn.datasets import make_blobs
+
+# Importing PC1 and PC2
+PCA_data = r.PCA_data
+bw = estimate_bandwidth(PCA_data, quantile = 0.3, n_samples = 500)
+ms = MeanShift(bandwidth = bw, bin_seeding = True)
+ms.fit(PCA_data)
+
+```
+
+
+
+```{r}
+PCA_data_labels <- PCA_data %>% 
+  as_tibble() %>% 
+  cbind(as.factor(py$ms$labels_)) %>% 
+  setNames(c("PC1", "PC2", "mean_shift"))
+
+
+ggplot(PCA_data2, aes(x = PC1, y = PC2, col = mean_shift)) +
+  geom_point(alpha = 0.3) +
+  theme_bw() +
+  ggtitle (glue("{query}, colored by mean shift clustering (bandwith selected with quantile = 0.3)"))
+```
+
+
+
+
+

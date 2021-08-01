@@ -7,6 +7,7 @@ library("broom")
 library("here")
 library("seqinr")
 library("tidyverse")
+needs::prioritize("dplyr")
 setwd(here::here())
 
 ##----------------------------------------------------------------
@@ -20,7 +21,7 @@ query_metadata. <- excel_sheets("./data/raw/Query_figur.xlsx") %>%
   sapply(function(X) read_xlsx("./data/raw/Query_figur.xlsx", sheet = X, skip = 1), USE.NAMES = T) %>% 
   lapply(as.data.frame) %>% 
   `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>%
-  rbindlist()
+  rbindlist() 
 
 # Additional information of the prokka annotations
 gff. <- fread("./data/raw/gff.tsv") %>%
@@ -30,8 +31,8 @@ gff. <- fread("./data/raw/gff.tsv") %>%
 
 
 
-proximity_filtration <- function(filename_psiblast, 
-                                 perc_id = 20, 
+proximity_filtration <- function(filename_psiblast,
+                                 perc_id = 20,
                                  max_dist_prok = 8,
                                  max_dist_gene = 2000,
                                  min_genes = 2,
@@ -74,15 +75,11 @@ proximity_filtration <- function(filename_psiblast,
     mutate(ProkkaNO = as.numeric(ProkkaNO)) %>%
     mutate(ID = str_sub(ID, start = 1, end = -2)) %>% 
     # Merging
-    inner_join(gff#, by = c("Target_label", "ProkkaNO", "ID")
-               ) %>%
+    inner_join(gff) %>%
     left_join(magstats, by = "ID", keep = FALSE) %>%
-    left_join(query_metadata[, c("Genename", "Function")], 
+    left_join(query_metadata[query_metadata$Psiblast %in% filename_psiblast, c("Genename", "Function")], 
               by = c("Query_label" = "Genename"), keep=FALSE)  %>%
     arrange(Target_label, ProkkaNO) %>%
-    # ASSIGNING psi_filtered
-    assign(x = "psi_perc_ID_filt", value = ., pos = 1) %>% 
-  ##---------------------------------------------------------------
     # Operon Grouping
     group_by(seqname, ID) %>%
     # define gene and prokka distance to posterior and prior psiblast hit
@@ -96,6 +93,9 @@ proximity_filtration <- function(filename_psiblast,
     mutate(operon_place = ifelse(!(prio_prok | prio_gene), "start", NA),
            operon = ifelse(operon_place == "start", row_number(), NA)) %>%
     fill(operon, .direction = "down") %>%
+    # ASSIGNING psi_filtered
+    assign(x = "psi_perc_ID_filt", value = ., pos = 1) %>% 
+  ##---------------------------------------------------------------
     # Operon number of genes filtering
     group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes) %>%
