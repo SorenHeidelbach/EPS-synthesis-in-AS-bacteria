@@ -46,8 +46,7 @@ proximity_filtration("xanthan",
                      min_genes = 6)
 proximity_filtration("curdlan", 
                      min_genes = 2, 
-                     essential_genes = "crdS",
-                     perc_id = 20)
+                     essential_genes = "crdS")
 proximity_filtration("pnag_pga",
                      min_genes = 3,
                      essential_genes = "pgaC")

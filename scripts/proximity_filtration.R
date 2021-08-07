@@ -44,7 +44,9 @@ proximity_filtration <- function(filename_psiblast,
                                  essential_genes = NA
                                  ){
   filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
-
+  unlink(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
+  unlink(glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"))
+  unlink(glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"))
   ##---------------------------------------------------------------
   ##                Processing of PSI-BLAST results                
   ##---------------------------------------------------------------
@@ -100,6 +102,7 @@ proximity_filtration <- function(filename_psiblast,
     # Operon number of genes filtering
     group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | is.na(essential_genes))) %>%
+    {if(nrow(.) == 0) stop("No results, try less strict filtration. Filter by less unique genes, remove essential genes, increase percent identity...") else .} %>% 
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 
