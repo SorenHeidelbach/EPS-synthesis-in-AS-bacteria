@@ -4,6 +4,7 @@ library("tidyr")
 library("treeio")
 library("ggtree")
 library("readxl")
+library("dplyr")
 setwd(here::here())
 
 
@@ -49,7 +50,19 @@ psi_proxi_filt <- list.files("./output/psi_proxi_filt/") %>%
   reduce(full_join, by = "ID") %>% 
   tibble::column_to_rownames(var = "ID") %>% 
   replace(., is.na(.), 0)
-
+colnames(psi_proxi_filt) <- psi_proxi_filt %>% colnames() %>% 
+  str_replace("alginate", "Alginate") %>% 
+  str_replace("cellulose1", "Cellulose I") %>% 
+  str_replace("cellulose2", "Cellulose II") %>% 
+  str_replace("HA_Pasteurella", "HA (pmHAS)") %>% 
+  str_replace("HA_streptococcus", "HA (has)") %>% 
+  str_replace("NulO_merged", "NulO") %>% 
+  str_replace("pel_merged", "Pel") %>% 
+  str_replace("pnag_pga", "PNAG (pga)") %>% 
+  str_replace("xanthan", "Xanthan")  %>% 
+  str_replace("psl", "Psl") 
+  
+  
 ##---------------------------------------------------------------
 ##            Import meta information for each HQ-MAG            
 ##---------------------------------------------------------------
@@ -89,24 +102,26 @@ tree <- tree_tib %>%
 ##---------------------------------------------------------------
 ##                         Plotting tree                         
 ##---------------------------------------------------------------
-tree_plot <- ggtree(tree, aes(color = phylum), layout = "fan", lwd = 0.1, open.angle = 20)
+tree_plot <- ggtree(tree, aes(color = phylum), layout = "rectangular", 
+                    lwd = 0.1, open.angle = 20)
 
-# Percent identity plot
-ggsave("./figures/percID_filt_HQ_MAG.pdf", width = 10, height = 10, 
-       gheatmap(tree_plot, data = psi_perc_filt, 
-                width = 2,colnames_offset_y = 0.5,
-                colnames_angle=90, font.size = 2,
-                hjust = 1) +
-         scale_fill_gradient(low = "white", high = "red", na.value = "lightblue") 
-)
+# # Percent identity plot
+# ggsave("./figures/percID_filt_HQ_MAG.pdf", width = 10, height = 10, 
+#        gheatmap(tree_plot, data = psi_perc_filt, 
+#                 width = 2,colnames_offset_y = 0.5, 
+#                 colnames_angle = -90, font.size = 2,
+#                 hjust = 1,  border_color = NA) +
+#          scale_fill_gradient(low = "white", high = "red", na.value = "white") 
+# )
 
 # Proximity filtrated plot
-ggsave("./figures/proxi_filt_HQ_MAG_tree.pdf", width = 10, height = 10, 
+ggsave("./figures/proxi_filt_HQ_MAG_tree.pdf", width = 10, height = 20, 
   gheatmap(tree_plot, data = psi_proxi_filt, 
            width = 2,colnames_offset_y = 0.5,
-           colnames_angle=90, font.size = 2,
+           colnames_angle = -90, font.size = 2,
            hjust = 1) +
-    scale_fill_gradient(low = "white", high = "red", na.value = "lightblue") 
+    scale_fill_gradient(low = "gray90", high = "red", na.value = "white") +
+    theme(legend.position="top")
 )
 
 

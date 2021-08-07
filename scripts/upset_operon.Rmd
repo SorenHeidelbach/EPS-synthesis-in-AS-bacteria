@@ -234,7 +234,7 @@ metadata$group <- case_when(
 pdf("./figures/upset/UpSet_operon_shared_by_queries.pdf", width = 8, height = 12)
 UpSetR::upset(
   upset_df,
-  #sets = order_sets, 
+  sets = names(upset_df)[2:length(names(upset_df))], 
   nintersects = 10,
   order.by = "freq",
   sets.x.label = "Total Hits",

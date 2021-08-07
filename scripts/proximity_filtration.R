@@ -40,7 +40,8 @@ proximity_filtration <- function(filename_psiblast,
                                  magstats = magstats.,
                                  query_metadata = query_metadata.,
                                  gff = gff.,
-                                 exclude_gene = ""
+                                 exclude_gene = "",
+                                 essential_genes = NA
                                  ){
   filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
 
@@ -98,7 +99,7 @@ proximity_filtration <- function(filename_psiblast,
   ##---------------------------------------------------------------
     # Operon number of genes filtering
     group_by(operon) %>%
-    filter(length(unique(Query_label)) >= min_genes) %>%
+    filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | is.na(essential_genes))) %>%
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 

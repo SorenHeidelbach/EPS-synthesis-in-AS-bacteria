@@ -24,6 +24,36 @@ genes <- fread(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
 ##---------------------------------------------------------------
 ##  Loading interproscan data and merging with psiblast operons  
 ##---------------------------------------------------------------
+clean_gff3 <- function(df){
+  # Extraction of relevant annotation information
+  df %>% filter(!str_detect("polypeptide", V3)) %>%
+    mutate(
+      domain = str_extract(V9, "signature_desc=[^;]*;"),
+      domain = str_sub(domain, 1, -2),
+      domain = gsub("signature_desc=", "", x = domain)) %>%
+    subset(select = -c(V2, V3, V7, V8, V9)) %>%
+    setNames(c("Target_label", "start1", "end1", "e_value", "Domain")) %>%
+    filter(!is.na(Domain)) %>%
+    distinct() %>%
+    # Formating of domain names (a bit of confusing regular expressions)
+    mutate(
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase", "GT"),
+      Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
+      Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
+      Domain = str_replace(Domain, ".*[cC]ellulose.*synth.*protein[^' ']*" , "CS "),
+      Domain = str_replace(Domain, ".*[cC]ellulose.*synth[^' ']*", "CS "),
+      Domain = str_replace(Domain, " N.terminal domain" , "_N"),
+      Domain = str_replace(Domain, " C.terminal domain" , "_C"),
+      Domain = str_replace(Domain, ".*BCSC_C.*", "bcsC"),
+      Domain = str_replace(Domain, "[iI]nitation [fF]actor" , "IF"),
+      Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
+      Domain = str_replace(Domain, ".*Tetratrico.*|.*TPR.*", "T"),
+      Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA"),
+    ) 
+}
 ## Loading
 filename_psiblast %>% 
   lapply(function(query) {
@@ -46,14 +76,7 @@ filename_psiblast %>%
       bind_rows()
   }) %>%
   bind_rows() %>%
-  # Extraction of relevant annotation information
-  filter(!str_detect("polypeptide", V3)) %>%
-  mutate(
-    domain = str_extract(V9, "signature_desc=[^;]*;"),
-    domain = str_sub(domain, 1, -2),
-    domain = gsub("signature_desc=", "", x = domain)) %>%
-  subset(select = -c(V2, V3, V7, V8, V9)) %>%
-  setNames(c("Target_label", "start1", "end1", "e_value", "Domain")) %>%
+  clean_gff3() %>% 
   ## Combining information from genes to domains
   full_join(genes) %>%
   mutate(start2 = start + as.numeric(start1) * 3,
@@ -62,26 +85,6 @@ filename_psiblast %>%
     "start", "end", "start2", "end2", "Domain", "operon", "ID",
     "ID2", "Function", "strand")) %>%
   mutate(Percent_identity = 50) %>%
-  filter(!is.na(Domain)) %>%
-  distinct() %>%
-  # Formating of domain names (a bit of confusing regular expressions)
-  mutate(
-    Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
-    Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
-    Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
-    Domain = str_replace(Domain, "[gG]lycosyl.*transferase", "GT"),
-    Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
-    Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
-    Domain = str_replace(Domain, ".*[cC]ellulose.*synth.*protein[^' ']*" , "CS "),
-    Domain = str_replace(Domain, ".*[cC]ellulose.*synth[^' ']*", "CS "),
-    Domain = str_replace(Domain, " N.terminal domain" , "_N"),
-    Domain = str_replace(Domain, " C.terminal domain" , "_C"),
-    Domain = str_replace(Domain, ".*BCSC_C.*", "bcsC"),
-    Domain = str_replace(Domain, "[iI]nitation [fF]actor" , "IF"),
-    Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
-    Domain = str_replace(Domain, ".*Tetratrico.*|.*TPR.*", "T"),
-    Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA"),
-  ) %>% 
   # -> ASSIGNING "domains"
   assign(x = "domains", value = ., pos = 1)
 
@@ -131,11 +134,64 @@ genes <- add_midas_tax(genes) %>%
 domains <- add_midas_tax(domains) %>% 
   filter(!is.na(ID2))
 
+##----------------------------------------------------------------
+##                    Adding query information                    
+##----------------------------------------------------------------
+genes <- query_metadata. %>% 
+  mutate(
+    start = Start,
+    start_target_plot = Start,
+    end = End,
+    end_target_plot = End,
+    title = "Query",
+    ID2 = "Query",
+    mi_phylum = "a",
+    operon = 0,
+    strand = ifelse(Strand == "+", 1, -1),
+    Query_label = Genename,
+  ) %>% 
+  filter(Psiblast %in% filename_psiblast) %>% 
+  full_join(genes) %>% 
+  mutate(
+    title = factor(title, levels = unique(arrange(., order(mi_species))$title))
+  )
 
+# Extraction of relevant annotation information
+domains <- read.table( 
+    glue("./data/raw/ipsq/{filename_psiblast}.gff3"),
+    sep = "\t", fill = TRUE, comment.char = "#", quote = "\""
+    ) %>%
+  clean_gff3() %>% 
+  mutate(Genename = Target_label) %>% 
+  # Adding gene information about query genes
+  left_join(query_metadata.) %>% 
+  mutate(
+    start2 = Start + as.numeric(start1) * 3,
+    end2 = Start + as.numeric(end1) * 3,
+    #ID = "Query",
+    ID2 = "Query",
+    title = "Query",
+    mi_phylum = "a",
+    operon = 0,
+    strand = ifelse(Strand == "+", 1, -1),
+    start = Start,
+    end = End
+  ) %>% 
+  select(c("start2", "end2", "Domain", "title",
+    "ID2", "Function", "strand", "operon", "start", "end", "mi_phylum")) %>%
+  mutate(Percent_identity = 50) %>%
+  filter(!is.na(Domain)) %>% 
+  full_join(domains)
 
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
 ##---------------------------------------------------------------
+# Reordering the title column to change order in plot
+genes <- genes %>% 
+  mutate(
+    title = ordered(title, levels = levels(genes$title[order(genes$operon, na.last = FALSE)]))
+  )
+
 gene_height <- 4
 ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
        width = unit(13, "mm"),
@@ -164,12 +220,12 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            #position = position_nudge(y = 0.3)
          ) +
          geom_text(data = genes %>% mutate(start = (start_target_plot + end_target_plot)/2),
-                   aes(x = start, label = Query_label)) +
-         geom_text(data = genes %>% mutate(Percent_identity = ifelse(Percent_identity == 40,
+                   aes(x = start, label = Query_label)
+         ) +
+         geom_text(data = genes %>% 
+                     mutate(Percent_identity = ifelse(Percent_identity == 40,
                                                                      yes = " ",
-                                                                     no = paste0(
-                                                                       signif(Percent_identity, digits = 2),
-                                                                       "%"))),
+                                                                     no = paste0(signif(Percent_identity, digits = 2),"%"))),
                    aes(x = start_target_plot, label = Percent_identity),
                     nudge_y = 0.16, size = 2) +
          # Domains boxes
@@ -195,7 +251,8 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            size = 2,
            angle = 8
          ) +
-         facet_wrap( ~ operon, scales = "free", ncol = 1) +
+         facet_wrap( ~ mi_phylum + mi_class + mi_order + mi_family + mi_genus + mi_species + title, 
+                     scales = "free", ncol = 1) +
          scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40)) +
          guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
          theme_genes() +
@@ -204,7 +261,7 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            axis.text.y = element_markdown(),
            axis.title.y = element_blank()
          ) +
-         scale_fill_brewer(palette = "Set3")
+         scale_fill_brewer(palette = "Set3") 
 )
 }
 
