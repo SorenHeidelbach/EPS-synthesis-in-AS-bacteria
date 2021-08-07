@@ -4,7 +4,6 @@ library("glue")
 library("gggenes")
 library("ggtext")
 library("broom")
-library("here")
 library("seqinr")
 library("tidyverse")
 needs::prioritize("dplyr")
@@ -30,7 +29,9 @@ gff. <- fread("./data/raw/gff.tsv") %>%
          ProkkaNO = as.numeric(ProkkaNO))
 
 
-
+##---------------------------------------------------------------
+##                         Main function                         
+##---------------------------------------------------------------
 proximity_filtration <- function(filename_psiblast,
                                  perc_id = 20,
                                  max_dist_prok = 8,
@@ -44,6 +45,8 @@ proximity_filtration <- function(filename_psiblast,
                                  essential_genes = NA
                                  ){
   filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
+  
+  # Remove old results
   unlink(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
   unlink(glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"))
   unlink(glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"))
@@ -102,7 +105,7 @@ proximity_filtration <- function(filename_psiblast,
     # Operon number of genes filtering
     group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | is.na(essential_genes))) %>%
-    {if(nrow(.) == 0) stop("No results, try less strict filtration. Filter by less unique genes, remove essential genes, increase percent identity...") else .} %>% 
+    {if(nrow(.) == 0) stop("No results, try less strict filtration.") else .} %>% 
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 
@@ -190,68 +193,3 @@ proximity_filtration <- function(filename_psiblast,
   }
 }
 
-
-
-
-
-
-
-
-
-# Exploratory code to check the effect of different operon parameters
-# PC analasys used to check
-
-# library("ggbiplot")
-# Manually verified operons ()
-# verified <- glue("./data/processed/manually_verified/{filename_psiblast}.txt") %>% 
-#   file.info() %>% 
-#   filter(size > 0) %>% 
-#   rownames() %>% 
-#   lapply(fread, header = FALSE) %>% 
-#   rbindlist() %>% 
-#   unique() %>% 
-#   `[[`(1)
-# 
-# library(ggbiplot)
-# psi_compare %>% 
-#   filter(!is.na(E_value)) %>% 
-#   ungroup() %>% 
-#   mutate(coverage = (end_target - start_target) / (end - start)/3,) %>% 
-#   select(`Bit score`, Percent_identity, coverage) %>% 
-#   prcomp(center = TRUE, scale. = TRUE) %>% 
-#   ggbiplot(groups = psi_compare$in_operon, ellipse = TRUE)
-# 
-# psi_PCA_mean <-  psiblast %>% 
-#   ungroup() %>% 
-#   mutate(coverage = (end_target - start_target) / (end - start)/3,) %>%
-#   group_by(operon) %>% 
-#   dplyr::summarize(
-#     mean_bit = mean(`Bit score`),
-#     mean_cov = mean(coverage),
-#     mean_perc_id = mean(Percent_identity),
-#     size = length(coverage)
-#     ) %>%
-#   inner_join(psiblast, by = "operon") %>% 
-#   ungroup() %>% 
-#   full_join(psi_filtered) %>%
-#   mutate(coverage = (end_target - start_target) / (end - start)/3,) %>%
-#   mutate(
-#     in_operon = case_when(
-#       Target_label %in% subset(psiblast, ID %in% verified)$Target_label ~ "Manual",
-#       Target_label %in% psiblast$Target_label ~ "Automatic",
-#       TRUE ~ "Removed"
-#     ),
-#     mean_bit = ifelse(is.na(mean_bit), yes = `Bit score`, no = mean_bit), 
-#     mean_cov = ifelse(is.na(mean_cov), yes = coverage, no = mean_cov),
-#     mean_perc_id = ifelse(is.na(mean_perc_id), yes = Percent_identity, no = mean_perc_id),
-#     size = ifelse(is.na(size), 1, size),
-#     size2 = as.character(size)
-#     ) %>%
-#   ungroup()
-# psi_PCA_mean2 <- psi_PCA_mean %>%  
-#  select(mean_bit, mean_cov, mean_perc_id, size) 
-# 
-# 
-# prcomp(psi_PCA_mean2, scale. = TRUE, center = TRUE) %>% 
-#   ggbiplot(groups = psi_PCA_mean$size2)
-# 
