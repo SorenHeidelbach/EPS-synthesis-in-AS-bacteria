@@ -50,6 +50,7 @@ psi_proxi_filt <- list.files("./output/psi_proxi_filt/") %>%
   reduce(full_join, by = "ID") %>% 
   tibble::column_to_rownames(var = "ID") %>% 
   replace(., is.na(.), 0)
+
 colnames(psi_proxi_filt) <- psi_proxi_filt %>% colnames() %>% 
   str_replace("alginate", "Alginate") %>% 
   str_replace("cellulose1", "Cellulose I") %>% 
@@ -115,7 +116,7 @@ tree_plot <- ggtree(tree, aes(color = phylum), layout = "rectangular",
 # )
 
 # Proximity filtrated plot
-ggsave("./figures/proxi_filt_HQ_MAG_tree.pdf", width = 10, height = 20, 
+ggsave("./figures/trees/HQ_MAG_tree_1.pdf", width = 10, height = 15, 
   gheatmap(tree_plot, data = psi_proxi_filt, 
            width = 2,colnames_offset_y = 0.5,
            colnames_angle = -90, font.size = 2,
@@ -125,4 +126,42 @@ ggsave("./figures/proxi_filt_HQ_MAG_tree.pdf", width = 10, height = 20,
 )
 
 
+ggsave("./figures/trees/HQ_MAG_tree_2.pdf", width = 10, height = 30, 
+       gheatmap(tree_plot, data = psi_proxi_filt, 
+                width = 1.5, colnames_offset_y = 0.5,
+                colnames_angle = -90, font.size = 2,
+                hjust = 1) +
+         scale_fill_gradient(low = "gray90", high = "red", na.value = "white") +
+         theme(legend.position="top",
+               line = element_line(size = 0),
+               panel.grid = element_line(colour = "red"),
+               rect = element_rect(colour = "blue")) +
+         scale_y_continuous(expand = c(0,0))
+)
 
+
+
+
+## load example tree from package
+nwk <- system.file("extdata", "sample.nwk", package="treeio")
+tree <- read.tree(nwk)
+
+##  circular tree
+circ <- ggtree(tree, layout = "circular") +
+  geom_tiplab(size=3, color="black", align=TRUE, offset = 1)
+
+##  external data which should be attached
+df <- data.frame(habitat=c("a", "b", "a", "c", "d", "d", "a", "b", "e", "e", "f", "c", "f"))
+row.names(df) <- pull(circ$data[circ$data$isTip=="TRUE", "label"])
+
+##  circular tree with heatmap without colname but remaining gap
+p1 <- gheatmap(circ, df[,"habitat", drop=FALSE], offset = 0.8, width=0.1,
+               colnames = FALSE) 
+p1
+
+##  circular tree with heatmap without gap
+p2 <- gheatmap(circ, df[,"habitat", drop=FALSE], offset = 0.8, width=0.1,
+               colnames = FALSE) +
+  ##  close gap 
+  scale_y_continuous(expand = c(0,0))
+p2

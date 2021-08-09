@@ -8,22 +8,19 @@ output:
     highlight: github
 ---
 
-```yaml
-output:
-  prettydoc::html_pretty:
-    theme: architect
-    highlight: github
-```
 
 
 
-```{r, setup}
+```{r, setup, echo = FALSE, message = FALSE, warning = FALSE}
 library("reticulate", quietly = TRUE, warn.conflicts = FALSE)
 library("here", quietly = TRUE, warn.conflicts = FALSE)
 library("glue", quietly = TRUE, warn.conflicts = FALSE)
 library("ggplot2", quietly = TRUE, warn.conflicts = FALSE)
 library("tidyverse", quietly = TRUE, warn.conflicts = FALSE)
 library("ggbiplot", quietly = TRUE, warn.conflicts = FALSE)
+library("broom")
+library(ggdendro)
+library("ape")
 setwd(here::here())
 knitr::opts_knit$set(root.dir = here::here(),
                      message = FALSE,
@@ -35,7 +32,7 @@ use_condaenv("py3.8", required = TRUE)
 
 
 ```{r}
-query <-  "gellan"
+query <-  "NulO_merged"
 
 psi_id_filt <- read.delim(glue("./output/psi_percID_filt/{query}.tsv"))
 psi_proxi_filt <- read.delim(glue("./output/psi_proxi_filt/{query}.tsv"))
@@ -58,22 +55,68 @@ PCA_pre_proces <-  psi_id_filt %>%
       Target_label %in% psi_proxi_filt$Target_label ~ "Proximity Filtration",
       TRUE ~ "Removed"),
     ) %>%  
-  filter(size > 0 & size < 15)
+  filter(size > 1 & size < 15)
 
 PCA_model <- PCA_pre_proces %>% 
   select(mean_bit, mean_cov, mean_perc_id, size_uniq, repetition) %>% 
   prcomp(scale. = TRUE, center = TRUE)
+
+# setting plot themes
+theme_set(new = theme_bw() + theme(legend.position = "bottom"))
+theme(legend.position = "bottom")
+# Scree plot
+summary(PCA_model)$importance %>% `[`(2,) %>% 
+  data.frame(variance = .) %>% 
+  mutate(PC  = row.names(.) ) %>% 
+  ggplot(aes(x = PC, y = variance)) +
+  geom_point() +
+  xlab("Principal Component") +
+  ylab("Variance explained") +
+  ggtitle("Scree Plot of Principal Components")
+
+
+# biplot
+ggbiplot(PCA_model, choices = 1:2, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
+  ggtitle(glue("{query}")) +
+  guides(color = guide_legend(title = "Nr. unique \n gene hits"))
+
+# biplot
+ggbiplot(PCA_model, choices = c(1, 3), groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
+  ggtitle(glue("{query}")) +
+  guides(color = guide_legend(title = "Nr. unique \n gene hits"))
+
+# biplot
+ggbiplot(PCA_model, choices = 2:3, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
+  ggtitle(glue("{query}")) +
+  guides(color = guide_legend(title = "Nr. unique \n gene hits"))
+
+
+# Selecting number of PC's to include in clustering
 PCA_data = PCA_model$x[,c("PC1", "PC2", "PC3")]
   
-ggbiplot(PCA_model, choices = 1:2, groups = as.character(PCA_pre_proces$size_uniq), alpha = 0.4) + 
-  theme_bw() +
-  ggtitle(glue("{query}, colored by number of unique genes in operon"))
+# Kmeans clustering
+kmeans_PCA <- kmeans(PCA_model$x, 4)
+ggbiplot(PCA_model, choices = 1:2, groups = as.character(kmeans_PCA$cluster), alpha = 0.4) + 
+  ggtitle(glue("{query}, colored by kmeans clustering, n = 2")) +
+  guides(color = guide_legend(title = "Cluster"))
+```
 
-kmeans_PCA <- kmeans(PCA_model$x, 2)
-ggbiplot(PCA_model, choices = 2:3, groups = as.character(kmeans_PCA$cluster), alpha = 0.4) + 
-  theme_bw() +
-  ggtitle(glue("{query}, colored by kmeans clustering, n = 2"))
- 
+
+```{r}
+# hiearical clustering
+rownames(PCA_data) <- PCA_pre_proces$operon
+hclust_PCA <- hclust(dist(PCA_data), method = "ward.D2") %>% 
+  as.dendrogram() %>% 
+  dendro_data(type = "rectangle")
+hclust_PCA$labels <- hclust_PCA$labels %>% 
+  mutate(operon = as.numeric (label)) %>% 
+  left_join(PCA_pre_proces, by = "operon")
+
+ggplot(segment(hclust_PCA)) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  theme_dendro() + 
+  geom_text(data = label(hclust_PCA),
+            aes(x = x, y = y, label = size_uniq, color = as.factor(size_uniq)), cex = 0.8)
 ```
 
 
@@ -85,7 +128,7 @@ from sklearn.datasets import make_blobs
 
 # Importing PC1 and PC2
 PCA_data = r.PCA_data
-bw = estimate_bandwidth(PCA_data, quantile = 0.3, n_samples = 500)
+bw = estimate_bandwidth(PCA_data, quantile = 0.15, n_samples = 500)
 ms = MeanShift(bandwidth = bw, bin_seeding = True)
 ms.fit(PCA_data)
 
@@ -102,12 +145,16 @@ PCA_data_labels <- PCA_data %>%
   mutate (size_uniq = as.character(size_uniq))
 colnames(PCA_data_labels)[4] <- "labels"
 
-ggsave(filename = glue("./figures/clustering/{query}_meanshift.pdf"), device = "pdf",
-ggplot(PCA_data_labels, aes(x = PC2, y = PC3, col = labels, shape = size_uniq)) +
+#ggsave(filename = glue("./figures/clustering/{query}_meanshift.pdf"), device = "pdf",
+ggplot(PCA_data_labels, aes(x = PC1, y = PC2, col = labels, shape = size_uniq)) +
   geom_point(aes(), alpha = 0.6) +
   scale_shape_manual(values = c(1:4, 16, 17, 18, 19)) +
   theme_bw() +
-  ggtitle (glue("{query}, colored by mean shift clustering"))
-)
+  ggtitle (glue("{query}, colored by mean shift clustering")) +
+  guides(color = guide_legend(title = "Cluster"),
+         shape = guide_legend(title = "Nr. of unique\n genes in operon"))
+#)
+
+
 ```
 
