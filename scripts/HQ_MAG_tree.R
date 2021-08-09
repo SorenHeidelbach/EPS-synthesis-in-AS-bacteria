@@ -3,6 +3,8 @@ library("tidyverse")
 library("tidyr")
 library("treeio")
 library("ggtree")
+library("ggtreeExtra")
+library("ggnewscale")
 library("readxl")
 library("dplyr")
 setwd(here::here())
@@ -71,10 +73,13 @@ colnames(psi_proxi_filt) <- psi_proxi_filt %>% colnames() %>%
 phylum <- read_tsv("./data/raw/magstats.tsv") %>% 
   mutate(
     phylum =   str_extract(MiDAS3_6Tax, "p:[^,]*"),
-    phylum =   str_remove(phylum, "p:")
+    phylum =   str_remove(phylum, "p:"),
+    genus =  str_extract(MiDAS3_6Tax, "g:[^,]*"),
+    genus =  str_remove(genus, "g:"),
+    genus =  str_remove(genus, ";")
   ) %>% 
-  select(ID, phylum) %>% 
-  setNames(c("label", "phylum"))
+  select(ID, phylum, genus) %>% 
+  setNames(c("label", "phylum", "genus"))
 
 ##---------------------------------------------------------------
 ##                         Creating tree                         
@@ -82,29 +87,62 @@ phylum <- read_tsv("./data/raw/magstats.tsv") %>%
 # Creating tibble with tree information
 tree_tib <- read.tree("./data/processed/iTol/MGP1000_bac_1080_maaike_ITOL.tree") %>% 
   as_tibble() %>% 
-  full_join(phylum, by = "label") %>% 
+  full_join(phylum, by = "label") %>%  
   filter(!is.na(node)) %>% 
   as.treedata() %>% as_tibble() %>% 
   # Add phylum to intermediate nodes (only those with unique offspring phylum)
   mutate(
     offspring_phylum = map(node, function(x) offspring(., x) %>% pull(phylum) %>% unique %>% `[`(!is.na(.))),
+    parent_offspring_phylum = map(parent, function(x) {
+        offspring(., x) %>% 
+        pull(phylum) %>% 
+        unique() %>% 
+        `[`(!is.na(.))
+      }),
     phylum = case_when(
       offspring_phylum %>% map(length) == 0 ~ phylum,
       offspring_phylum %>% map(length) == 1 ~ as.character(offspring_phylum),
       TRUE ~ "NA"),
-    phylum = ifelse(phylum == "NA", NA, phylum)
+    phylum = ifelse(phylum == "NA", NA, phylum),
+    phylum_ancestor = case_when(
+      parent_offspring_phylum %>% map(length) > 1 & offspring_phylum %>% map(length) == 1 ~ as.character(offspring_phylum),
+      TRUE ~ "NA"
+    )
   ) %>% 
   select(-offspring_phylum) 
 
 # Creating treedata object
-tree <- tree_tib %>% 
+tree <- tree_tib %>%
   as.treedata()
 
 ##---------------------------------------------------------------
 ##                         Plotting tree                         
 ##---------------------------------------------------------------
-tree_plot <- ggtree(tree, aes(color = phylum), layout = "rectangular", 
-                    lwd = 0.1, open.angle = 20)
+
+tree_plot <- ggtree(tree, layout = "rectangular", 
+                    lwd = 0.2, open.angle = 20, ) +
+  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(node2 = node), 
+                  mapping = aes(node = node2, label = phylum, color = phylum),
+                  geom = "text", fontsize = 2.5, horizontal = TRUE, align = FALSE, fontface  = 2) +
+  scale_color_discrete(guide = "none") +
+  geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , aes(node = node, fill = phylum_ancestor)) +
+  scale_fill_discrete(guide = "none") +
+  new_scale_fill() +
+  geom_fruit(data = psi_proxi_filt %>% mutate(label = row.names(.)) %>%  pivot_longer(cols = -label), 
+             geom = geom_tile,
+             pwidth = 0.75,
+             mapping = aes(y = label, x = name, fill = value),
+             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 0, vjust = 0),
+             grid.params = list(vline = TRUE, color = "grey96"),
+             offset = 0.1) +
+  scale_fill_gradient(low = "grey96", high = "blue2", na.value = "gray99",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
+  theme(legend.position = "bottom")
+
+
+
+ggsave("./figures/trees/HQ_MAG_tree_fruit_rectangular.pdf", width = 12, height = 12, limitsize = FALSE,
+  plot = tree_plot
+)
 
 # # Percent identity plot
 # ggsave("./figures/percID_filt_HQ_MAG.pdf", width = 10, height = 10, 
@@ -126,42 +164,14 @@ ggsave("./figures/trees/HQ_MAG_tree_1.pdf", width = 10, height = 15,
 )
 
 
-ggsave("./figures/trees/HQ_MAG_tree_2.pdf", width = 10, height = 30, 
+ggsave("./figures/trees/HQ_MAG_tree_2.pdf", width = 10, height = 50, limitsize = FALSE,
        gheatmap(tree_plot, data = psi_proxi_filt, 
                 width = 1.5, colnames_offset_y = 0.5,
                 colnames_angle = -90, font.size = 2,
                 hjust = 1) +
          scale_fill_gradient(low = "gray90", high = "red", na.value = "white") +
-         theme(legend.position="top",
-               line = element_line(size = 0),
-               panel.grid = element_line(colour = "red"),
-               rect = element_rect(colour = "blue")) +
-         scale_y_continuous(expand = c(0,0))
+         theme(legend.position="top")
 )
 
 
 
-
-## load example tree from package
-nwk <- system.file("extdata", "sample.nwk", package="treeio")
-tree <- read.tree(nwk)
-
-##  circular tree
-circ <- ggtree(tree, layout = "circular") +
-  geom_tiplab(size=3, color="black", align=TRUE, offset = 1)
-
-##  external data which should be attached
-df <- data.frame(habitat=c("a", "b", "a", "c", "d", "d", "a", "b", "e", "e", "f", "c", "f"))
-row.names(df) <- pull(circ$data[circ$data$isTip=="TRUE", "label"])
-
-##  circular tree with heatmap without colname but remaining gap
-p1 <- gheatmap(circ, df[,"habitat", drop=FALSE], offset = 0.8, width=0.1,
-               colnames = FALSE) 
-p1
-
-##  circular tree with heatmap without gap
-p2 <- gheatmap(circ, df[,"habitat", drop=FALSE], offset = 0.8, width=0.1,
-               colnames = FALSE) +
-  ##  close gap 
-  scale_y_continuous(expand = c(0,0))
-p2
