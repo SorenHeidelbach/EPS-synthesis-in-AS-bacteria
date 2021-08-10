@@ -119,7 +119,7 @@ tree <- tree_tib %>%
 ##                         Plotting tree                         
 ##---------------------------------------------------------------
 
-tree_plot <- ggtree(tree, layout = "rectangular", 
+tree_plot <- ggtree(tree, layout = "fan", 
                     lwd = 0.2, open.angle = 20, ) +
   geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(node2 = node), 
                   mapping = aes(node = node2, label = phylum, color = phylum),
@@ -132,15 +132,18 @@ tree_plot <- ggtree(tree, layout = "rectangular",
              geom = geom_tile,
              pwidth = 0.75,
              mapping = aes(y = label, x = name, fill = value),
-             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 0, vjust = 0),
-             grid.params = list(vline = TRUE, color = "grey96"),
+             col = "grey94",
+             alpha = 1,
+             lwd = 0.0001,
+             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 1, vjust = 0.5),
+             grid.params = list(vline = TRUE, color = "grey94", hline = FALSE),
              offset = 0.1) +
-  scale_fill_gradient(low = "grey96", high = "blue2", na.value = "gray99",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
+  scale_fill_gradient(low = "grey94", high = "red", na.value = "white",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
   theme(legend.position = "bottom")
 
 
 
-ggsave("./figures/trees/HQ_MAG_tree_fruit_rectangular.pdf", width = 12, height = 12, limitsize = FALSE,
+ggsave("./figures/trees/HQ_MAG_tree_fruit_fan.pdf", width = 12, height = 16, limitsize = FALSE,
   plot = tree_plot
 )
 

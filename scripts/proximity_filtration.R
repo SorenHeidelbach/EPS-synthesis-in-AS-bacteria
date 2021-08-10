@@ -105,7 +105,7 @@ proximity_filtration <- function(filename_psiblast,
     # Operon number of genes filtering
     group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | is.na(essential_genes))) %>%
-    {if(nrow(.) == 0) stop("No results, try less strict filtration.") else .} %>% 
+    {if(nrow(.) == 0) stop("No results, try less strict filtration. No results were saved") else .} %>% 
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 

@@ -251,7 +251,7 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            size = 2,
            angle = 8
          ) +
-         facet_wrap( ~ mi_phylum + mi_class + mi_order + mi_family + mi_genus + mi_species + title, 
+         facet_wrap( ~ mi_phylum + mi_family + mi_genus + mi_species + title, 
                      scales = "free", ncol = 1) +
          scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40)) +
          guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
