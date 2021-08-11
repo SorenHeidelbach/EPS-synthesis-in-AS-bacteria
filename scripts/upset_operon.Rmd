@@ -175,8 +175,8 @@ Now the data has been prepared and is ready for upset plot.
 ```{r UpSet plot with operons}
 # Renaming polysaccharides according agreed opun names
 colnames(upset_df) <- colnames(upset_df) %>%  dplyr::recode(
-   "cellulose1" = "Cellulose1*",
-   "cellulose2" = "Cellulose2*",
+   "cellulose1" = "Cellulose I*",
+   "cellulose2" = "Cellulose II*",
    "curdlan" = "Curdlan*",
    "pnag_eps" = "PNAG (eps)",
    "pnag_ica" = "PNAG (ica)*",
@@ -227,7 +227,7 @@ metadata$group <- case_when(
   metadata$sets %in% c("S88", "Diutan", "Gellan")                    ~ "Sphingans",
   metadata$sets %in% c( "PNAG (ica)*", "PNAG (pga)*", "PNAG (eps)")    ~ "pnag",
   metadata$sets %in% c("HA (has)*", "HA (pmHAS)*")     ~ "HA",
-  metadata$sets %in% c("Cellulose1*", "Cellulose2*")                   ~ "cellulose",
+  metadata$sets %in% c("Cellulose I*", "Cellulose II*")                   ~ "cellulose",
   TRUE ~ "other"
 )
 

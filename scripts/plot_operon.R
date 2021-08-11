@@ -52,6 +52,19 @@ clean_gff3 <- function(df){
       Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
       Domain = str_replace(Domain, ".*Tetratrico.*|.*TPR.*", "T"),
       Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA"),
+      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain II", "PGM_PMM_II"),
+      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain I", "PGM_PMM_I"),
+      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain III", "PGM_PMM_III"),
+      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase,_C", "PGM_PMM_IV"),
+      Domain = str_replace(Domain, "RTX calcium-binding nonapeptide repeat.*", "Hemolysn_Ca-bd"),
+      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, UDP binding domain", "UDPG_MGDP_dh_C"),
+      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, central domain", "UDP-Glc/GDP-Man_DH_dimer"),
+      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, NAD binding domain", "UDPG_MGDP_dh_N"),
+      Domain = str_replace(Domain, "SGNH hydrolase-like domain, acetyltransferase AlgX", "ALGX/ALGJ_SGNH-like"),
+      Domain = str_replace(Domain, "MBOAT, membrane-bound O-acyltransferase family", "MBOAT_fam"),
+      Domain = str_replace(Domain, "Periplasmic copper-binding protein.*", "NosD_dom"),
+      Domain = str_replace(Domain, "UDP-N-acetylglucosamine 2-epimerase", "UDP-GlcNAc_Epase")
+      
     ) 
 }
 ## Loading
@@ -134,6 +147,47 @@ genes <- add_midas_tax(genes) %>%
 domains <- add_midas_tax(domains) %>% 
   filter(!is.na(ID2))
 
+
+##----------------------------------------------------------------
+##                    Reversing strand direction                    
+##----------------------------------------------------------------
+operon_reversed <- genes %>%
+  group_by(operon) %>% 
+  summarize(direction = sum(strand)) %>% 
+  filter(direction < 0) %>% 
+  pull(operon)
+  
+  
+genes <- genes %>% 
+  mutate(
+    reverse = operon %in% operon_reversed,
+    operon_middle = (min(c(start, end)) + max(c(start, end)))/2,
+    start = ifelse(reverse, 2*operon_middle - start, start),
+    end = ifelse(reverse, 2*operon_middle - end, end),
+    start_target_plot = ifelse(reverse, 2*operon_middle - start_target_plot, start_target_plot),
+    end_target_plot = ifelse(reverse, 2*operon_middle - end_target_plot, end_target_plot)
+    #strand = ifelse(reverse, strand, strand)
+  ) %>% 
+  select(-reverse, -operon_middle)
+
+domains <- domains %>% 
+  mutate(
+    reverse = operon %in% operon_reversed,
+    operon_middle = (min(c(start, end)) + max(c(start, end)))/2,
+    start = ifelse(reverse, 2*operon_middle - start, start),
+    end = ifelse(reverse, 2*operon_middle - end, end),
+    gene_middle = (start + end)/2,
+    start2 = ifelse(reverse, 2*operon_middle - start2, start2),
+    start2 = ifelse(reverse, 2*gene_middle - start2, start2),
+    end2 = ifelse(reverse, 2*operon_middle - end2, end2),
+    end2 = ifelse(reverse, 2*gene_middle - end2, end2)
+    
+    #strand = ifelse(reverse, strand, strand)
+  ) %>% 
+  select(-reverse, -operon_middle)
+
+  
+
 ##----------------------------------------------------------------
 ##                    Adding query information                    
 ##----------------------------------------------------------------
@@ -186,11 +240,8 @@ domains <- read.table(
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
 ##---------------------------------------------------------------
-# Reordering the title column to change order in plot
-genes <- genes %>% 
-  mutate(
-    title = ordered(title, levels = levels(genes$title[order(genes$operon, na.last = FALSE)]))
-  )
+assign("genes", genes, pos = 1)
+assign("domains", domains, pos = 1)
 
 gene_height <- 4
 ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
@@ -226,7 +277,7 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
                      mutate(Percent_identity = ifelse(Percent_identity == 40,
                                                                      yes = " ",
                                                                      no = paste0(signif(Percent_identity, digits = 2),"%"))),
-                   aes(x = start_target_plot, label = Percent_identity),
+                   aes(x = (start_target_plot+end_target_plot)/2, label = Percent_identity),
                     nudge_y = 0.16, size = 2) +
          # Domains boxes
          geom_gene_arrow(
@@ -248,12 +299,11 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            data = domains %>% mutate(start = (start2 + end2) / 2),
            aes(x = start, label = Domain,  y = title),
            nudge_y = -0.35,
-           size = 2,
-           angle = 8
+           size = 1.6,
+           angle = 20
          ) +
          facet_wrap( ~ mi_phylum + mi_family + mi_genus + mi_species + title, 
                      scales = "free", ncol = 1) +
-         scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40)) +
          guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
          theme_genes() +
          theme(
@@ -261,7 +311,17 @@ ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, coll
            axis.text.y = element_markdown(),
            axis.title.y = element_blank()
          ) +
-         scale_fill_brewer(palette = "Set3") 
+         scale_fill_brewer(palette = "Set3") +
+         guides(alpha = guide_legend(title = "Percent Identity of Matched Region",
+                                     nrow =  1, 
+                                     title.position = "top", 
+                                     title.hjust = 0.5,
+                                     override.aes = list(fill = "black")),
+                fill = guide_legend(title = "Function of Matched Query Gene", 
+                                    nrow = 1, 
+                                    title.position = "top", 
+                                    title.hjust = 0.5)) +
+         scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40))
 )
 }
 

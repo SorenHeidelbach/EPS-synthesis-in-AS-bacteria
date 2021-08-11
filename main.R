@@ -69,7 +69,7 @@ proximity_filtration("S88",
                                       "rhsB", "rhsA", "rhsC", "rhsB"))
 proximity_filtration("NulO_merged", 
                      min_genes = 3,
-                     essential_genes = "neuB")
+                     essential_genes = c("neuA", "neuB"))
 proximity_filtration("HA_Pasteurella", 
                      min_genes = 1, 
                      perc_id = 33)

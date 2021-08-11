@@ -78,34 +78,36 @@ proximity_filtration <- function(filename_psiblast,
     # Cleaning
     separate(Target_label, c("ID", "ProkkaNO"),
              sep = -5, remove = FALSE, extra = "merge") %>%
-    mutate(ProkkaNO = as.numeric(ProkkaNO)) %>%
-    mutate(ID = str_sub(ID, start = 1, end = -2)) %>% 
+    mutate(
+      ProkkaNO = as.numeric(ProkkaNO),
+      ID = str_sub(ID, start = 1, end = -2)
+      ) %>% 
     # Merging
     inner_join(gff) %>%
     left_join(magstats, by = "ID", keep = FALSE) %>%
-    left_join(query_metadata[query_metadata$Psiblast %in% filename_psiblast, c("Genename", "Function")], 
+    left_join(query_metadata %>% filter(Psiblast %in% filename_psiblast) %>% select(Genename, Function), 
               by = c("Query_label" = "Genename"), keep=FALSE)  %>%
     arrange(Target_label, ProkkaNO) %>%
     # Operon Grouping
     group_by(seqname, ID) %>%
     # define gene and prokka distance to posterior and prior psiblast hit
     mutate(prio_prok = ProkkaNO - shift(ProkkaNO) < max_dist_prok,
-           prio_gene = start - shift(end, 1) < max_dist_gene,
            prio_prok = replace_na(prio_prok, FALSE),
+           prio_gene = start - shift(end, 1) < max_dist_gene,
            prio_gene = replace_na(prio_gene, FALSE)
            ) %>%
     ungroup() %>% 
-    # If a gene only satisfy distance to prior hit and not posterior = start
+    # If a gene don't satisfy distance to prior gene, it's start of operon
     mutate(operon_place = ifelse(!(prio_prok | prio_gene), "start", NA),
            operon = ifelse(operon_place == "start", row_number(), NA)) %>%
     fill(operon, .direction = "down") %>%
-    # ASSIGNING psi_filtered
+    # ASSIGNING psi_perc_ID_filt
     assign(x = "psi_perc_ID_filt", value = ., pos = 1) %>% 
   ##---------------------------------------------------------------
     # Operon number of genes filtering
     group_by(operon) %>%
-    filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | is.na(essential_genes))) %>%
-    {if(nrow(.) == 0) stop("No results, try less strict filtration. No results were saved") else .} %>% 
+    filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | any(is.na(essential_genes)))) %>%
+    {if(nrow(.) == 0) stop("All results were filtrated away, try less strict filtration. No results were saved") else .} %>% 
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 
@@ -116,7 +118,7 @@ proximity_filtration <- function(filename_psiblast,
              TRUE ~ ID)
            ) %>% 
     select(-letter) %>% unnest(cols = c(cols)) %>% 
-    # ->ASSIGNING "psiblast"<- 
+    # ->ASSIGNING "psi_proxi_filt"<- 
     assign(x = "psi_proxi_filt", value = ., pos = 1) %>% 
   ##---------------------------------------------------------------
     ## Expansion of filtered psiblast hits with surrounding genes
@@ -157,7 +159,7 @@ proximity_filtration <- function(filename_psiblast,
     fill(SILVA138Tax, .direction = "updown") %>%
     fill(GTDBTax, .direction = "updown") %>%
     fill(ID2, .direction = "updown") %>% 
-    # ->ASSIGNING "genes"<- 
+    # ->ASSIGNING "psi_operon_full"<- 
     assign(x = "psi_operon_full", value = ., pos = 1)
   
   ##---------------------------------------------------------------

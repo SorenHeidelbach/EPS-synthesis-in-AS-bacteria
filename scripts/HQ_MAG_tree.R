@@ -44,14 +44,14 @@ psi_proxi_filt <- list.files("./output/psi_proxi_filt/") %>%
       group_by(ID) %>% 
       summarise(genes_percent = length(unique(Query_label))) %>% 
       mutate(
-        genes_percent = genes_percent/(query_metadata. %>% filter(Psiblast == name_query) %>% nrow)
+        genes_percent = 100 * genes_percent/(query_metadata. %>% filter(Psiblast == name_query) %>% nrow)
       ) %>% 
       setNames(c("ID", name_query))
     }
   ) %>% 
   reduce(full_join, by = "ID") %>% 
   tibble::column_to_rownames(var = "ID") %>% 
-  replace(., is.na(.), 0)
+  replace(., is.na(.), 0) 
 
 colnames(psi_proxi_filt) <- psi_proxi_filt %>% colnames() %>% 
   str_replace("alginate", "Alginate") %>% 
@@ -106,7 +106,7 @@ tree_tib <- read.tree("./data/processed/iTol/MGP1000_bac_1080_maaike_ITOL.tree")
     phylum = ifelse(phylum == "NA", NA, phylum),
     phylum_ancestor = case_when(
       parent_offspring_phylum %>% map(length) > 1 & offspring_phylum %>% map(length) == 1 ~ as.character(offspring_phylum),
-      TRUE ~ "NA"
+      TRUE ~ "NA",
     )
   ) %>% 
   select(-offspring_phylum) 
@@ -119,31 +119,37 @@ tree <- tree_tib %>%
 ##                         Plotting tree                         
 ##---------------------------------------------------------------
 
-tree_plot <- ggtree(tree, layout = "fan", 
+tree_plot <- ggtree(tree, layout = "rectangular", 
                     lwd = 0.2, open.angle = 20, ) +
-  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(node2 = node), 
-                  mapping = aes(node = node2, label = phylum, color = phylum),
-                  geom = "text", fontsize = 2.5, horizontal = TRUE, align = FALSE, fontface  = 2) +
+  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")), 
+                mapping = aes(node = node, label = phylum, color = phylum),
+                geom = "text", fontsize = 2.3, horizontal = FALSE, 
+                align = TRUE, fontface  = 2, offset = -0.04) +
   scale_color_discrete(guide = "none") +
   geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , aes(node = node, fill = phylum_ancestor)) +
   scale_fill_discrete(guide = "none") +
   new_scale_fill() +
-  geom_fruit(data = psi_proxi_filt %>% mutate(label = row.names(.)) %>%  pivot_longer(cols = -label), 
+  geom_fruit(data = psi_proxi_filt %>%
+               mutate(label = row.names(.)) %>%  
+               pivot_longer(cols = -label) %>% 
+               mutate(
+                 tile_alpha = ifelse(value < 0.001, 0, 1)
+               ), 
              geom = geom_tile,
              pwidth = 0.75,
-             mapping = aes(y = label, x = name, fill = value),
-             col = "grey94",
-             alpha = 1,
+             mapping = aes(y = label, x = name, fill = value, alpha = tile_alpha),
              lwd = 0.0001,
-             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 1, vjust = 0.5),
-             grid.params = list(vline = TRUE, color = "grey94", hline = FALSE),
+             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 0, vjust = 0.5),
+             #grid.params = list(vline = TRUE, color = "white"),
              offset = 0.1) +
-  scale_fill_gradient(low = "grey94", high = "red", na.value = "white",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
-  theme(legend.position = "bottom")
+  scale_fill_gradient(low = "white", high = "red", na.value = "white",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(title = "Percentage of Query Genes Present in Operon/Cluster", override.aes = list(col = "black")),
+         alpha = "none")
 
 
 
-ggsave("./figures/trees/HQ_MAG_tree_fruit_fan.pdf", width = 12, height = 16, limitsize = FALSE,
+ggsave("./figures/trees/HQ_MAG_tree_fruit_rectangular.pdf", width = 12, height = 16, limitsize = FALSE,
   plot = tree_plot
 )
 
