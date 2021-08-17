@@ -33,7 +33,8 @@ proximity_filtration("alginate",
 proximity_filtration("psl", 
                      min_genes = 7)
 proximity_filtration("pel_merged", 
-                     min_genes = 6)
+                     min_genes = 6,
+                     essential_genes = "pelF")
 proximity_filtration("cellulose1", 
                      min_genes = 2,
                      essential_genes = "bcsAI")
