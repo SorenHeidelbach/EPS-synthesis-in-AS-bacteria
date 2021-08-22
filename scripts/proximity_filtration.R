@@ -50,11 +50,11 @@ proximity_filtration <- function(filename_psiblast,
   unlink(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
   unlink(glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"))
   unlink(glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"))
-  ##---------------------------------------------------------------
-  ##                Processing of PSI-BLAST results                
-  ##---------------------------------------------------------------
+  
+  message(glue("Percent identity filtation ({filename_psiblast_col})"))
+  
   # Loading raw psiblast results
-  test <- filename_psiblast %>%
+  test1 <- filename_psiblast %>%
     paste0("./data/raw/psiblast/", ., ".txt") %>%
     lapply(
       fread,
@@ -66,48 +66,49 @@ proximity_filtration <- function(filename_psiblast,
     ) %>%
     bind_rows() %>%
     filter(!(Query_label %in% exclude_gene)) %>% 
-    # ASSIGNING psi_raw
-    assign(x = "psi_raw", value = ., pos = 1) %>% 
-  ##---------------------------------------------------------------
-    # Filtering
+  # Filtering
     subset(!is.na(E_value)) %>%
     filter(Percent_identity > perc_id) %>%
     group_by(Target_label) %>%
     filter(`Bit score` == max(`Bit score`)) %>%
     filter(!duplicated(Target_label)) %>%
-    # Cleaning
+  # Cleaning
     separate(Target_label, c("ID", "ProkkaNO"),
              sep = -5, remove = FALSE, extra = "merge") %>%
     mutate(
       ProkkaNO = as.numeric(ProkkaNO),
       ID = str_sub(ID, start = 1, end = -2)
       ) %>% 
-    # Merging
-    inner_join(gff) %>%
+  # Merging gff, MAG statistics and query information
+    inner_join(gff, by = c("Target_label", "ID", "ProkkaNO") ) %>%
     left_join(magstats, by = "ID", keep = FALSE) %>%
     left_join(query_metadata %>% filter(Psiblast %in% filename_psiblast) %>% select(Genename, Function), 
               by = c("Query_label" = "Genename"), keep=FALSE)  %>%
     arrange(Target_label, ProkkaNO) %>%
-    # Operon Grouping
+  # Operon Grouping
     group_by(seqname, ID) %>%
-    # define gene and prokka distance to posterior and prior psiblast hit
-    mutate(prio_prok = ProkkaNO - shift(ProkkaNO) < max_dist_prok,
-           prio_prok = replace_na(prio_prok, FALSE),
-           prio_gene = start - shift(end, 1) < max_dist_gene,
-           prio_gene = replace_na(prio_gene, FALSE)
-           ) %>%
+    # define gene and prokka distance to prior psiblast hit
+    mutate(prio_prok = replace_na(ProkkaNO - shift(ProkkaNO) < max_dist_prok, FALSE),
+           prio_gene = replace_na(start - shift(end, 1) < max_dist_gene, FALSE)) %>%
     ungroup() %>% 
     # If a gene don't satisfy distance to prior gene, it's start of operon
     mutate(operon_place = ifelse(!(prio_prok | prio_gene), "start", NA),
            operon = ifelse(operon_place == "start", row_number(), NA)) %>%
     fill(operon, .direction = "down") %>%
-    # ASSIGNING psi_perc_ID_filt
-    assign(x = "psi_perc_ID_filt", value = ., pos = 1) %>% 
+    assign(x = "psi_perc_ID_filt", value = ., pos = 1)
+  
+  # Write percent identity filtered results
+  dir.create("./output/psi_percID_filt", showWarnings = FALSE)
+  write.table(psi_perc_ID_filt, 
+              file = glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"),
+              quote = F, sep = "\t", row.names = F)
+  
   ##---------------------------------------------------------------
-    # Operon number of genes filtering
-    group_by(operon) %>%
+  message(glue("Proximity filtration ({filename_psiblast_col})"))
+  # Operon number of genes filtering
+  test2 <- psi_perc_ID_filt %>% group_by(operon) %>%
     filter(length(unique(Query_label)) >= min_genes & (all(essential_genes %in% Query_label) | any(is.na(essential_genes)))) %>%
-    {if(nrow(.) == 0) stop("All results were filtrated away, try less strict filtration. No results were saved") else .} %>% 
+    {if(nrow(.) == 0) stop("All results were filtrated away, try less strict filtration.") else .} %>% 
     select(-prio_prok, -prio_gene) %>% 
     ungroup() %>% 
     nest(cols = !c(ID, operon)) %>% 
@@ -118,12 +119,18 @@ proximity_filtration <- function(filename_psiblast,
              TRUE ~ ID)
            ) %>% 
     select(-letter) %>% unnest(cols = c(cols)) %>% 
-    # ->ASSIGNING "psi_proxi_filt"<- 
-    assign(x = "psi_proxi_filt", value = ., pos = 1) %>% 
+    assign(x = "psi_proxi_filt", value = ., pos = 1)
+  
+  # Write proximity filtered results
+  dir.create("./output/psi_proxi_filt", showWarnings = FALSE)
+  write.table(psi_proxi_filt, 
+              file = glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"), 
+              quote = F, sep = "\t", row.names = F)
+  message(glue("Operon expansion with intermediate and flanking genes ({filename_psiblast_col})"))
   ##---------------------------------------------------------------
-    ## Expansion of filtered psiblast hits with surrounding genes
-    # Identify surrounding genes
-    group_by(operon) %>%
+  ## Expansion of filtered psiblast hits with surrounding genes
+  # Identify surrounding genes
+  test3 <- psi_proxi_filt %>% group_by(operon) %>%
     fill(ID2, .direction = "updown") %>% 
     summarise(
       ID = unique(ID),
@@ -131,14 +138,13 @@ proximity_filtration <- function(filename_psiblast,
       max = max(ProkkaNO),
       min = min(ProkkaNO)
       ) %>%
-    full_join(gff) %>%
+    full_join(gff, by = "ID") %>%
     group_by(operon) %>%
     filter(ProkkaNO <= (max + flanking_genes) &
            ProkkaNO >= (min - flanking_genes) & 
            seqname  == tig) %>%
     # Merging surrounding and psiblast genes
-    full_join(psi_proxi_filt) %>%
-  ##---------------------------------------------------------------
+    full_join(psi_proxi_filt, by = c("operon", "ID", "seqname", "start", "end", "strand", "ProkkaNO", "Target_label")) %>%
     # Prepare for plotting in gggenes - see plot_operon.R
     group_by(operon) %>%
     mutate(
@@ -161,29 +167,15 @@ proximity_filtration <- function(filename_psiblast,
     fill(ID2, .direction = "updown") %>% 
     # ->ASSIGNING "psi_operon_full"<- 
     assign(x = "psi_operon_full", value = ., pos = 1)
-  
-  ##---------------------------------------------------------------
-  ##                   Writing data to tsv files                   
-  ##---------------------------------------------------------------
-  dir.create("./output/psi_percID_filt", showWarnings = FALSE)
-  write.table(psi_perc_ID_filt, file = glue("./output/psi_percID_filt/{filename_psiblast_col}.tsv"),#_qualfilt_percID{perc_id}.tsv"), 
-              quote = F, sep = "\t", row.names = F)
-  
-  dir.create("./output/psi_proxi_filt", showWarnings = FALSE)
-  #write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}_genes{min_genes}_dist{max_dist_prok}&{max_dist_gene}_percID{perc_id}.tsv"), 
-  #            quote = F, sep = "\t", row.names = F)
-  write.table(psi_proxi_filt, file = glue("./output/psi_proxi_filt/{filename_psiblast_col}.tsv"), 
-              quote = F, sep = "\t", row.names = F)
-  
+  # Write operons with surrounding and intermediate genes
   dir.create("./output/psi_operon_full", showWarnings = FALSE)
-  #write.table(psi_operon_full, file = glue("./output/psi_operon_full/{filename_psiblast_col}_genes{min_genes}_dist{max_dist_prok}&{max_dist_gene}_percID{perc_id}_flank{flanking_genes}.tsv"), 
-  #            quote = F, sep = "\t", row.names = F)
   write.table(psi_operon_full, file = glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"), 
               quote = F, sep = "\t", row.names = F)
   
   ##------------------------------------------------------------------
   ##  Export fasta files of identified genes, with surrounding genes  
   ##------------------------------------------------------------------
+  message(glue("Saving FASTA files of genes in expanded operons ({filename_psiblast_col})"))
   for (f in unique(psi_operon_full$ID)){
     dir.create(glue("./data/processed/fasta_output/{filename_psiblast_col}"), showWarnings = FALSE, recursive = TRUE)
     read.fasta(file = glue("./data/raw/MGP1000_HQMAG1083_prot_db_split/{f}.faa"), 

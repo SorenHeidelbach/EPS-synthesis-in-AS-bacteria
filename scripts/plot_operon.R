@@ -244,84 +244,91 @@ assign("genes", genes, pos = 1)
 assign("domains", domains, pos = 1)
 
 gene_height <- 4
-ggsave(glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
-       width = unit(13, "mm"),
-       height = unit(1.5*length(unique(genes$ID2)), "mm"),
-       limitsize = FALSE,
-       ggplot(genes, aes(xmin = start, xmax = end, y = title, forward = strand)) +
-         # Empty gene arrows
-         geom_gene_arrow(
-           arrowhead_height = unit(gene_height, "mm"),
-           arrow_body_height = unit(gene_height, "mm"),
-           arrowhead_width = unit(5, "mm")
-         ) +
-         # Colored gene arrows (match in psiblast)
-         geom_subgene_arrow(
-           data = genes,
-           mapping = aes(xmin = start, xmax = end, y = title,
-                         xsubmin = start_target_plot,
-                         xsubmax = end_target_plot,
-                         fill = Function,
-                         forward = strand,
-                         alpha = Percent_identity
-           ),
-           arrowhead_height = unit(gene_height, "mm"),
-           arrow_body_height = unit(gene_height, "mm"),
-           arrowhead_width = unit(5, "mm"),
-           #position = position_nudge(y = 0.3)
-         ) +
-         geom_text(data = genes %>% mutate(start = (start_target_plot + end_target_plot)/2),
-                   aes(x = start, label = Query_label)
-         ) +
-         geom_text(data = genes %>% 
-                     mutate(Percent_identity = ifelse(Percent_identity == 40,
-                                                                     yes = " ",
-                                                                     no = paste0(signif(Percent_identity, digits = 2),"%"))),
-                   aes(x = (start_target_plot+end_target_plot)/2, label = Percent_identity),
-                    nudge_y = 0.16, size = 2) +
+ggsave(
+  glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
+  width = unit(13, "mm"),
+  height = unit(1.5 * length(unique(genes$ID2)), "mm"),
+  limitsize = FALSE,
+  ggplot(
+    genes, aes(xmin = start, xmax = end, y = title, forward = strand)) +
+    # Empty gene arrows
+    geom_gene_arrow(
+      arrowhead_height = unit(gene_height, "mm"),
+      arrow_body_height = unit(gene_height, "mm"),
+      arrowhead_width = unit(5, "mm")
+    ) +
+    # Colored gene arrows (match in psiblast)
+    geom_subgene_arrow(
+      data = genes,
+      mapping = aes(
+        xmin = start, xmax = end, y = title,
+        xsubmin = start_target_plot,
+        xsubmax = end_target_plot,
+        fill = Function,
+        forward = strand,
+        alpha = Percent_identity
+      ),
+      arrowhead_height = unit(gene_height, "mm"),
+      arrow_body_height = unit(gene_height, "mm"),
+      arrowhead_width = unit(5, "mm"),
+      #position = position_nudge(y = 0.3)
+    ) +
+    geom_text(
+      data = genes %>% mutate(start = (start_target_plot + end_target_plot)/2),
+      aes(x = start, label = Query_label)
+    ) +
+    geom_text(
+      data = genes %>% 
+      mutate(
+        Percent_identity = ifelse(Percent_identity == 40,
+        yes = " ",
+        no = paste0(signif(Percent_identity, digits = 2),"%"))),
+      aes(x = (start_target_plot+end_target_plot)/2, label = Percent_identity),
+      nudge_y = 0.16, size = 2
+    ) +
          # Domains boxes
-         geom_gene_arrow(
-           data = domains,
-           mapping = aes(
-             xmin = start2,
-             xmax = end2,
-             y = title,
-             forward = strand,
-             fill = Function,
-             alpha = Percent_identity
-           ),
-           arrowhead_height = unit(gene_height - 1, "mm"),
-           arrow_body_height = unit(gene_height - 1, "mm"),
-           arrowhead_width = unit(0, "mm"),
-           position = position_nudge(y = -0.35)
-         ) +
-         geom_text(
-           data = domains %>% mutate(start = (start2 + end2) / 2),
-           aes(x = start, label = Domain,  y = title),
-           nudge_y = -0.35,
-           size = 1.6,
-           angle = 20
-         ) +
-         facet_wrap( ~ mi_phylum + mi_family + mi_genus + mi_species + title, 
-                     scales = "free", ncol = 1) +
-         guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
-         theme_genes() +
-         theme(
-           legend.position = "top",
-           axis.text.y = element_markdown(),
-           axis.title.y = element_blank()
-         ) +
-         scale_fill_brewer(palette = "Set3") +
-         guides(alpha = guide_legend(title = "Percent Identity of Matched Region",
-                                     nrow =  1, 
-                                     title.position = "top", 
-                                     title.hjust = 0.5,
-                                     override.aes = list(fill = "black")),
-                fill = guide_legend(title = "Function of Matched Query Gene", 
-                                    nrow = 1, 
-                                    title.position = "top", 
-                                    title.hjust = 0.5)) +
-         scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40))
+    geom_gene_arrow(
+      data = domains,
+      mapping = aes(
+        xmin = start2,
+        xmax = end2,
+        y = title,
+        forward = strand,
+        fill = Function,
+        alpha = Percent_identity
+      ),
+      arrowhead_height = unit(gene_height - 1, "mm"),
+      arrow_body_height = unit(gene_height - 1, "mm"),
+      arrowhead_width = unit(0, "mm"),
+      position = position_nudge(y = -0.35)
+    ) +
+    geom_text(
+      data = domains %>% mutate(start = (start2 + end2) / 2),
+        aes(x = start, label = Domain,  y = title),
+      nudge_y = -0.35,
+      size = 1.6,
+      angle = 20
+    ) +
+    facet_wrap( 
+      ~ mi_phylum + mi_family + mi_genus + mi_species + title, 
+      scales = "free", ncol = 1
+    ) +
+    guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
+    theme_genes() +
+    theme(
+      legend.position = "top",
+      axis.text.y = element_markdown(),
+      axis.title.y = element_blank()
+    ) +
+    scale_fill_brewer(palette = "Set3") +
+    guides(
+      fill = guide_legend(
+        title = "Function of Matched Query Gene", 
+        nrow = 1, 
+        title.position = "top",
+        title.hjust = 0.5)
+    ) +
+    scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40))
 )
 }
 

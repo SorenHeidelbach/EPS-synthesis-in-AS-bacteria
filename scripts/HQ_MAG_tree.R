@@ -31,22 +31,21 @@ psi_perc_filt <- list.files("./output/psi_percID_filt/") %>%
       setNames(c("ID", name_query))
     }) %>% 
   reduce(full_join, by = "ID") %>% 
-  tibble::column_to_rownames(var = "ID") %>% 
-  replace(., is.na(.), 0) 
+  tibble::column_to_rownames(var = "ID")
 
 
 colnames(psi_perc_filt) <- psi_perc_filt %>% colnames() %>% 
-  str_replace("alginate", "Alginate ") %>% 
-  str_replace("cellulose1", "Cellulose I ") %>% 
-  str_replace("cellulose2", "Cellulose II ") %>% 
-  str_replace("HA_Pasteurella", "HA (pmHAS) ") %>% 
-  str_replace("HA_streptococcus", "HA (has) ") %>% 
-  str_replace("NulO_merged", "NulO ") %>% 
-  str_replace("pel_merged", "Pel ") %>% 
-  str_replace("pnag_pga", "PNAG (pga) ") %>% 
-  str_replace("pnag_eps", "PNAG (eps) ") %>% 
-  str_replace("xanthan", "Xanthan ") %>% 
-  str_replace("psl", "Psl ") 
+  str_replace("alginate", "Alginate") %>% 
+  str_replace("cellulose1", "Cellulose I") %>% 
+  str_replace("cellulose2", "Cellulose II") %>% 
+  str_replace("HA_Pasteurella", "HA (pmHAS)") %>% 
+  str_replace("HA_streptococcus", "HA (has)") %>% 
+  str_replace("NulO_merged", "NulO") %>% 
+  str_replace("pel_merged", "Pel") %>% 
+  str_replace("pnag_pga", "PNAG (pga)") %>% 
+  str_replace("pnag_eps", "PNAG (eps)") %>% 
+  str_replace("xanthan", "Xanthan") %>% 
+  str_replace("psl", "Psl") 
 
 # Percentage of proximity filtrated genes in each HQ-MAG
 psi_proxi_filt <- list.files("./output/psi_proxi_filt/") %>% 
@@ -62,32 +61,32 @@ psi_proxi_filt <- list.files("./output/psi_proxi_filt/") %>%
     }
   ) %>% 
   reduce(full_join, by = "ID") %>% 
-  tibble::column_to_rownames(var = "ID") %>% 
-  replace(., is.na(.), 0) 
+  tibble::column_to_rownames(var = "ID")
 
 colnames(psi_proxi_filt) <- psi_proxi_filt %>% colnames() %>% 
-  str_replace("alginate", "Alginate  ") %>% 
-  str_replace("cellulose1", "Cellulose I  ") %>% 
-  str_replace("cellulose2", "Cellulose II  ") %>% 
-  str_replace("HA_Pasteurella", "HA (pmHAS)  ") %>% 
-  str_replace("HA_streptococcus", "HA (has)  ") %>% 
-  str_replace("NulO_merged", "NulO  ") %>% 
-  str_replace("pel_merged", "Pel  ") %>% 
-  str_replace("pnag_pga", "PNAG (pga)  ") %>% 
-  str_replace("pnag_eps", "PNAG (eps)  ") %>% 
-  str_replace("xanthan", "Xanthan  ") %>% 
-  str_replace("psl", "Psl  ") 
-  
+  str_replace("alginate", "Alginate") %>% 
+  str_replace("cellulose1", "Cellulose I") %>% 
+  str_replace("cellulose2", "Cellulose II") %>% 
+  str_replace("HA_Pasteurella", "HA (pmHAS)") %>% 
+  str_replace("HA_streptococcus", "HA (has)") %>% 
+  str_replace("NulO_merged", "NulO") %>% 
+  str_replace("pel_merged", "Pel") %>% 
+  str_replace("pnag_pga", "PNAG (pga)") %>% 
+  str_replace("pnag_eps", "PNAG (eps)") %>% 
+  str_replace("xanthan", "Xanthan") %>% 
+  str_replace("psl", "Psl") 
 
-psi_all <- psi_perc_filt %>% 
+psi_proxi_filt <- psi_proxi_filt %>% 
   mutate(ID = row.names(.)) %>% 
-  full_join(psi_proxi_filt %>%  mutate(ID = row.names(.)), by = "ID")
-rownames(psi_all) <- psi_all$ID
-psi_all <- select(psi_all, -ID)
-psi_all[is.na(psi_all)] <- 0
-  
-  
-  
+  pivot_longer(-ID)
+psi_perc_filt <- psi_perc_filt %>% 
+  mutate(ID = row.names(.)) %>% 
+  pivot_longer(-ID)
+
+psi_proxi_filt <- psi_proxi_filt %>% 
+  rbind(
+psi_perc_filt %>% group_by(name) %>% head(n=16) %>% mutate(value = NA) %>% filter(!(name %in% unique(psi_proxi_filt$name)))
+)
 ##---------------------------------------------------------------
 ##            Import meta information for each HQ-MAG            
 ##---------------------------------------------------------------
@@ -140,173 +139,90 @@ tree <- tree_tib %>%
 ##---------------------------------------------------------------
 ##                         Plotting tree                         
 ##---------------------------------------------------------------
-
-tree_plot <- ggtree(tree, layout = "rectangular", 
-                    lwd = 0.2, open.angle = 20, ) +
-  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")), 
-                mapping = aes(node = node, label = phylum, color = phylum),
-                geom = "text", fontsize = 2.3, horizontal = FALSE, 
-                align = TRUE, fontface  = 2, offset = -0.04) +
-  scale_color_discrete(guide = "none") +
-  geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , aes(node = node, fill = phylum_ancestor)) +
-  scale_fill_discrete(guide = "none") +
-  new_scale_fill() +
-  geom_fruit(data = psi_proxi_filt %>%
-               mutate(label = row.names(.)) %>%  
-               pivot_longer(cols = -label) %>% 
-               mutate(
-                 tile_alpha = ifelse(value < 0.001, 0, 1)
-               ), 
-             geom = geom_tile,
-             pwidth = 0.75,
-             mapping = aes(y = label, x = name, fill = value, alpha = tile_alpha),
-             lwd = 0.0001,
-             axis.params = list(axis = "x", text.size = 5, text.angle = 90, hjust = 0, vjust = 0.5),
-             #grid.params = list(vline = TRUE, color = "white"),
-             offset = 0.1) +
-  scale_fill_gradient(low = "white", mid = "green", high = "red", na.value = "white",  guide = guide_legend(title = "Percent identified Genes", order = 1)) +
-  theme(legend.position = "bottom") +
-  guides(fill = guide_legend(title = "Percentage of Query Genes Present in Operon/Cluster", override.aes = list(col = "black")),
-         alpha = "none")
-
-ggsave("./figures/trees/HQ_MAG_tree_fruit_rectangular.pdf", width = 12, height = 16, limitsize = FALSE,
-  plot = tree_plot
-)
-
-n <- 20
-
-library(randomcoloR)
-library("RColorBrewer")
-palette <- distinctColorPalette(n)
-
-tree_plot <- ggtree(tree, layout = "fan", 
-                    lwd = 0.2, open.angle = 20, ) +
-  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")), 
-                mapping = aes(node = node, label = phylum),
-                angle = "auto", barsize = NA,
-                geom = "text", fontsize = 2.3, horizontal = TRUE, 
-                align = FALSE, fontface  = 2, offset = -0.04
-                ) +
-  scale_color_manual(guide = "none") +
-  geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , 
-               aes(node = node, fill = phylum_ancestor),
-               extendto = 4.3, alpha = 0.15) +
-  scale_fill_manual(values = c("#FFC125","#87CEFA","#7B68EE","#808080","#800080",
-                               "#9ACD32","#D15FEE","#FFC0CB","#EE6A50","#8DEEEE",
-                               "#006400","#800000","#B0171F","#191970", "#006400","#800000","#B0171F","#191970"), guide = "none") +
-  new_scale_fill() +
-  geom_fruit(data = psi_all %>%
-               mutate(label = row.names(.)) %>%  
-               pivot_longer(cols = -label) %>% 
-               mutate(
-                 tile_alpha = ifelse(value < 0.001, 0, 1),
-                 tile_fill =ifelse(name %in% colnames(psi_proxi_filt), "Proximity", "Percent Identity")
-               ), 
-             geom = geom_tile,
-             pwidth = 0.75,
-             mapping = aes(y = label, x = name, fill = value),
-             lwd = 0.0001,
-             axis.params = list(axis = "x",text = colnames(psi_all), text.size = 4, text.angle = 90, hjust = 0, vjust = 0.5, ),
-             #grid.params = list(vline = TRUE, color = "white"),
-             offset = 0.1) +
-  scale_fill_gradientn(colors = c("white", "lightblue2", "slateblue", "red3"), na.value = "white",  guide = guide_legend(order = 2, override.aes = list(col = "black"))) +
-  scale_alpha_continuous(range = c(0,1)) +
-  theme(legend.position = "bottom") +
-  guides(fill = guide_legend(title = "Percentage of Query Genes Present", override.aes = list(col = "black")), #, fill = c("mediumpurple4", "orange2", "mediumpurple4", "orange2", "mediumpurple4"))),
-         alpha = guide_legend(title = "Filtration Step")) 
-
-ggsave("./figures/trees/HQ_MAG_tree_fan_all.pdf", width = 12, height = 12, limitsize = FALSE,
-       plot = tree_plot
-)
-
-
-
 # Tree with inspiration from https://yulab-smu.top/treedata-book/chapter10.html
-
-tree_plot <- ggtree(tree, layout = "fan", 
-                    lwd = 0.2, open.angle = 20, ) +
-  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")), 
-                mapping = aes(node = node, label = phylum),
-                angle = "auto", barsize = NA,
-                geom = "text", fontsize = 2.3, horizontal = TRUE, 
-                align = TRUE, fontface  = 0.8, offset = 0.2,
-                hjust = 1
+fruit_list <- geom_fruit_list(
+    geom_fruit(
+      data = psi_perc_filt, 
+      geom = geom_tile,
+      pwidth = 0.75,
+      mapping = aes(y = ID, x = name, fill = value),
+      axis.params = list(axis = "x", text.size = 2, text.angle = -90, hjust = 0, vjust = 0.5),               # axis.params = list(axis = "x", text.size = 2.5, text.angle = -90, hjust = 0, vjust = 0.5),
+      grid.params = list(vline = FALSE, color = "gray60", alpha = 0.3),
+      offset = 0.1
+    ),
+    scale_fill_stepsn(
+      colors = c("#B7C3FB", "#9AABF9", "#6E87F7", "#516FF5"), 
+      na.value = "transparent",  
+      limits = c(0,100),
+      guide = guide_colorbar(
+        title = "Percentage of Query Genes Present\nBefore Proxi Filtration",
+        title.position = "top",
+        title.hjust = 0.5,
+        title.vjust = 0.5,
+        ticks.colour = "black", 
+        frame.colour = "black")
+    ),
+    new_scale_fill(),
+    geom_fruit(
+      data = psi_proxi_filt, 
+      geom = geom_tile,
+      pwidth = 0.75,
+      mapping = aes(y = ID, x = name, fill = value),
+      axis.params = list(axis = "x", text.size = 2, text.angle = -90, hjust = 0, vjust = 0.5),               # axis.params = list(axis = "x", text.size = 2.5, text.angle = -90, hjust = 0, vjust = 0.5),
+      grid.params = list(vline = FALSE, color = "gray60", alpha = 0.3),
+      offset = 0.1
+    ),
+    scale_fill_stepsn(
+      colours = c("#FF9999", "#FF6666", "#FF3333", "#FF0000"),
+      na.value = "transparent",  
+      limits = c(0,100),
+      guide = guide_colorbar(
+        title = "Percentage of Query Genes Present\nAfter Proxi Filtration",
+        title.position = "top",
+        title.hjust = 0.5,
+        title.vjust = 0.5, 
+        ticks.colour = "black", 
+        frame.colour = "black")
+    )
+  )
+# circular
+phylum_displayed <- phylum$phylum %>% table %>% `[`(order(.)) %>% tail(8) %>% names()
+tree_plot <- 
+  ggtree(
+    tree, 
+    layout = "fan", 
+    lwd = 0.1, 
+    open.angle = 20
   ) +
+  geom_hilight(
+    data = filter(tree_tib, phylum_ancestor != "NA") %>% 
+      filter(phylum %in% phylum_displayed), 
+    aes(node = node, fill = phylum_ancestor),
+    extendto = 2.58, alpha = 0.4) +
+  geom_cladelab(
+    data = filter(tree_tib, phylum_ancestor != "NA") %>% 
+      mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")) %>% 
+      filter(phylum %in% phylum_displayed), 
+    mapping = aes(node = node, label = phylum),
+    angle = "auto", barsize = NA,
+    geom = "text", fontsize = 1.8, horizontal = TRUE, 
+    align = TRUE, fontface  = 0.8,  hjust = 1, offset.text = 0.28
+    ) +
   scale_color_manual(guide = "none") +
-  geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , 
-               aes(node = node, fill = phylum_ancestor),
-               extendto = 2.5, alpha = 0.3) +
-  scale_fill_manual(values = c("#FFC125","#87CEFA","#7B68EE","#808080","#800080",
-                               "#9ACD32","#D15FEE","#FFC0CB","#EE6A50","#8DEEEE",
-                               "#006400","#800000","#B0171F","#191970", "#006400","#800000","#B0171F","#191970"), guide = "none") +
+  scale_fill_manual(
+    values = c(
+      "#FFC125","#87CEFA","#7B68EE","#808080","#800080",
+      "#006400","#800000","#B0171F","#191970", "#006400",
+      "#800000","#B0171F","#191970"), 
+    guide = "none") +
   new_scale_fill() +
-  geom_fruit(data = psi_proxi_filt %>%
-               mutate(label = row.names(.)) %>%  
-               pivot_longer(cols = -label) %>% 
-               mutate(
-                 tile_alpha = ifelse(value < 0.001, 0, 1),
-                 tile_fill =ifelse(name %in% colnames(psi_proxi_filt), "Proximity", "Percent Identity")
-               ), 
-             geom = geom_tile,
-             pwidth = 0.75,
-             mapping = aes(y = label, x = name, fill = value),
-             lwd = 0.0001,
-             axis.params = list(axis = "x",text = colnames(psi_all), text.size = 2.5, text.angle = -90, hjust = 0, vjust = 0.5, ),
-             grid.params = list(vline = FALSE, color = "gray60", alpha = 0.3),
-             offset = 0.1) +
-  scale_fill_gradientn(colors = c("transparent", "lightblue2", "slateblue", "red3"), na.value = "white",  guide = guide_legend(order = 2, override.aes = list(col = "black"))) +
-  scale_alpha_continuous(range = c(0,1)) +
-  theme(legend.position = "bottom") +
-  guides(fill = guide_legend(title = "Percentage of Query Genes Present", override.aes = list(col = "black")), #, fill = c("mediumpurple4", "orange2", "mediumpurple4", "orange2", "mediumpurple4"))),
-         alpha = guide_legend(title = "Filtration Step")) 
+  fruit_list +
+  theme(legend.position = "bottom")
 
-ggsave("./figures/trees/HQ_MAG_tree_fan_proxi.pdf", width = 10, height = 10, limitsize = FALSE,
+
+ggsave("./figures/trees/HQ_MAG_tree_fan.pdf", width = 10, height = 10, limitsize = FALSE,
        plot = tree_plot
 )
-
-
-# rectangular proxi filtration
-tree_plot <- ggtree(tree, layout = "rectangular", 
-                    lwd = 0.2, open.angle = 20, ) +
-  geom_cladelab(data = filter(tree_tib, phylum_ancestor != "NA") %>% mutate(phylum = str_replace_all(phylum, "Ca_", "Candidatus ")), 
-                mapping = aes(node = node, label = phylum),
-                angle = 0, barsize = NA,
-                geom = "text", fontsize = 2.3, horizontal = TRUE, 
-                align = TRUE, fontface  = 0.8, offset = 0.2,
-                hjust = 1
-  ) +
-  scale_color_manual(guide = "none") +
-  geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , 
-               aes(node = node, fill = phylum_ancestor),
-               extendto = 2.5, alpha = 0.3) +
-  scale_fill_manual(values = c("#FFC125","#87CEFA","#7B68EE","#808080","#800080",
-                               "#9ACD32","#D15FEE","#FFC0CB","#EE6A50","#8DEEEE",
-                               "#006400","#800000","#B0171F","#191970", "#006400","#800000","#B0171F","#191970"), guide = "none") +
-  new_scale_fill() +
-  geom_fruit(data = psi_proxi_filt %>%
-               mutate(label = row.names(.)) %>%  
-               pivot_longer(cols = -label) %>% 
-               mutate(
-                 tile_alpha = ifelse(value < 0.001, 0, 1),
-                 tile_fill =ifelse(name %in% colnames(psi_proxi_filt), "Proximity", "Percent Identity")
-               ), 
-             geom = geom_tile,
-             pwidth = 0.75,
-             mapping = aes(y = label, x = name, fill = value),
-             lwd = 0.0001,
-             axis.params = list(axis = "x",text = colnames(psi_all), text.size = 3.5, text.angle = 90, hjust = 0, vjust = 0.5, ),
-             grid.params = list(vline = FALSE, color = "gray60", alpha = 0.1),
-             offset = 0.1) +
-  scale_fill_gradientn(colors = c("transparent", "lightblue2", "slateblue", "red3"), na.value = "white",  guide = guide_legend(order = 2, override.aes = list(col = "black"))) +
-  scale_alpha_continuous(range = c(0,1)) +
-  theme(legend.position = "bottom") +
-  guides(fill = guide_legend(title = "Percentage of Query Genes Present", override.aes = list(col = "black")), #, fill = c("mediumpurple4", "orange2", "mediumpurple4", "orange2", "mediumpurple4"))),
-         alpha = guide_legend(title = "Filtration Step")) 
-
-ggsave("./figures/trees/HQ_MAG_tree_rect_proxi.pdf", width = 12, height = 12, limitsize = FALSE,
-       plot = tree_plot
-)
-
 
 
 ##---------------------------------------------------------------
@@ -328,7 +244,7 @@ plot_genes_HQ_mag <- function(eps){
     scale_color_manual(guide = "none") +
     geom_hilight(data = filter(tree_tib, phylum_ancestor != "NA") , 
                  aes(node = node, fill = phylum_ancestor),
-                 extendto = 2.35, alpha = 0.3) +
+                 extendto = 2.37, alpha = 0.3) +
     scale_fill_manual(values = c("#FFC125","#87CEFA","#7B68EE","#808080","#800080",
                                  "#9ACD32","#D15FEE","#FFC0CB","#EE6A50","#8DEEEE",
                                  "#006400","#800000","#B0171F","#191970", "#006400","#800000","#B0171F","#191970"), guide = "none") +

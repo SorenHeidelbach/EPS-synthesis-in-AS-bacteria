@@ -42,4 +42,5 @@ vignettes/*.pdf
 data/
 
 scritps/secondary/
-output/
+
+output
