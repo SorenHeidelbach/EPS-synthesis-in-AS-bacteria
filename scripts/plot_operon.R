@@ -4,6 +4,7 @@ library("here")
 library("gggenes")
 library("ggtext")
 library("glue")
+library("readxl")
 setwd(here())
 
 
@@ -11,7 +12,12 @@ setwd(here())
 dir.create("./figures/operon_w_domains", showWarnings = F)
 
 
-plot_operon <-  function(filename_psiblast, name_addon = ""){
+plot_operon <-  function(filename_psiblast,
+                         name_addon = "",
+                         query_title = "Query",
+                         article = FALSE,
+                         article_plot_domain = FALSE,
+                         mags = "all"){
 ##---------------------------------------------------------------
 ##      Parameter deifinition (must be same as in filtration)
 ##---------------------------------------------------------------
@@ -20,7 +26,15 @@ filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
 
 # Loading results from proximity filtration
 genes <- fread(glue("./output/psi_operon_full/{filename_psiblast_col}.tsv"))
-
+if(any("all" != mags)) {
+  genes <- filter(genes, ID %in%  mags)
+}
+# File with metadata on the query genes, e.g. function
+query_metadata. <- excel_sheets("./data/raw/Query_figur.xlsx") %>%
+  sapply(function(X) read_xlsx("./data/raw/Query_figur.xlsx", sheet = X, skip = 1), USE.NAMES = T) %>% 
+  lapply(as.data.frame) %>% 
+  `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>%
+  rbindlist() 
 ##---------------------------------------------------------------
 ##  Loading interproscan data and merging with psiblast operons  
 ##---------------------------------------------------------------
@@ -68,11 +82,10 @@ clean_gff3 <- function(df){
     ) 
 }
 ## Loading
-filename_psiblast %>% 
+test <- filename_psiblast %>% 
   lapply(function(query) {
     # Use this function on each polysaccharide name (e.g. "cellulose1)
     list.files(paste0("./data/raw/ips/", query, "_fasta_removed/")) %>%
-      subset(grepl(., pattern = query)) %>% 
       lapply(function(mag) {
         # Use this function on each mag ID (e.g. "Ega_18-Q3-R5-49_MAXAC.199")
         mag_path = paste0("./data/raw/ips/", query, "_fasta_removed/", mag)
@@ -159,28 +172,34 @@ operon_reversed <- genes %>%
   
   
 genes <- genes %>% 
+  group_by(operon) %>% 
   mutate(
     reverse = operon %in% operon_reversed,
     operon_middle = (min(c(start, end)) + max(c(start, end)))/2,
     start = ifelse(reverse, 2*operon_middle - start, start),
     end = ifelse(reverse, 2*operon_middle - end, end),
-    start_target_plot = ifelse(reverse, 2*operon_middle - start_target_plot, start_target_plot),
-    end_target_plot = ifelse(reverse, 2*operon_middle - end_target_plot, end_target_plot)
+    min_operon = min(c(start, end)),
+    start_target_plot = ifelse(reverse, 2*operon_middle - start_target_plot, start_target_plot) - min_operon,
+    end_target_plot = ifelse(reverse, 2*operon_middle - end_target_plot, end_target_plot) - min_operon,
+    end = end - min_operon,
+    start = start - min_operon
     #strand = ifelse(reverse, strand, strand)
   ) %>% 
   select(-reverse, -operon_middle)
 
 domains <- domains %>% 
+  group_by(operon) %>% 
   mutate(
     reverse = operon %in% operon_reversed,
     operon_middle = (min(c(start, end)) + max(c(start, end)))/2,
     start = ifelse(reverse, 2*operon_middle - start, start),
     end = ifelse(reverse, 2*operon_middle - end, end),
+    min_operon = min(c(start, end)),
     gene_middle = (start + end)/2,
-    start2 = ifelse(reverse, 2*operon_middle - start2, start2),
-    start2 = ifelse(reverse, 2*gene_middle - start2, start2),
-    end2 = ifelse(reverse, 2*operon_middle - end2, end2),
-    end2 = ifelse(reverse, 2*gene_middle - end2, end2)
+    start2 = ifelse(reverse, 2*operon_middle - start2, start2) -min_operon,
+    start2 = ifelse(reverse, 2*gene_middle - start2, start2)-min_operon,
+    end2 = ifelse(reverse, 2*operon_middle - end2, end2)-min_operon,
+    end2 = ifelse(reverse, 2*gene_middle - end2, end2)-min_operon
     
     #strand = ifelse(reverse, strand, strand)
   ) %>% 
@@ -197,7 +216,7 @@ genes <- query_metadata. %>%
     start_target_plot = Start,
     end = End,
     end_target_plot = End,
-    title = "Query",
+    title = glue("**{query_title}**"),
     ID2 = "Query",
     mi_phylum = "a",
     operon = 0,
@@ -207,7 +226,13 @@ genes <- query_metadata. %>%
   filter(Psiblast %in% filename_psiblast) %>% 
   full_join(genes) %>% 
   mutate(
-    title = factor(title, levels = unique(arrange(., order(mi_species))$title))
+    Function = str_replace(Function, "MOD", "Modification"),
+    Function = str_replace(Function, "PE", "Polymerization & Export"),
+    Function = str_replace(Function, "GT", "Glycosyl Transferase"),
+    Function = str_replace(Function, "ABC", "ABC transporter"),
+    Function = str_replace(Function, "SY", "Synthase"),
+    Function = str_replace(Function, "PS", "Precourser Synthesis"),
+    Function = str_replace(Function, "REG", "Regulatory")
   )
 
 # Extraction of relevant annotation information
@@ -224,7 +249,7 @@ domains <- read.table(
     end2 = Start + as.numeric(end1) * 3,
     #ID = "Query",
     ID2 = "Query",
-    title = "Query",
+    title = glue("**{query_title}**"),
     mi_phylum = "a",
     operon = 0,
     strand = ifelse(Strand == "+", 1, -1),
@@ -235,7 +260,16 @@ domains <- read.table(
     "ID2", "Function", "strand", "operon", "start", "end", "mi_phylum")) %>%
   mutate(Percent_identity = 50) %>%
   filter(!is.na(Domain)) %>% 
-  full_join(domains)
+  full_join(domains) %>% 
+  mutate(
+    Function = str_replace(Function, "MOD", "Modification"),
+    Function = str_replace(Function, "PE", "Polymerization & Export"),
+    Function = str_replace(Function, "GT", "Glycosyl Transferase"),
+    Function = str_replace(Function, "ABC", "ABC transporter"),
+    Function = str_replace(Function, "SY", "Synthase"),
+    Function = str_replace(Function, "PS", "Precourser Synthesis"),
+    Function = str_replace(Function, "REG", "Regulatory")
+  )
 
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
@@ -243,6 +277,8 @@ domains <- read.table(
 assign("genes", genes, pos = 1)
 assign("domains", domains, pos = 1)
 
+
+if(article == FALSE){
 gene_height <- 4
 ggsave(
   glue("./figures/operon_w_domains/gggenes_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
@@ -286,7 +322,7 @@ ggsave(
       aes(x = (start_target_plot+end_target_plot)/2, label = Percent_identity),
       nudge_y = 0.16, size = 2
     ) +
-         # Domains boxes
+    # Domains boxes
     geom_gene_arrow(
       data = domains,
       mapping = aes(
@@ -330,6 +366,155 @@ ggsave(
     ) +
     scale_alpha_continuous(range = c(0.1, 1), limits = c(20, 40))
 )
+} else{
+  ##---------------------------------------------------------------
+  ##            Article plotting            
+  ##---------------------------------------------------------------
+  update_title = function(x){
+    y <- x %>% 
+      mutate(
+        title = ifelse(
+          ID2 == "Query", 
+          title,
+          glue("**{ID2}, {mi_phylum}, {mi_class}, {mi_order}, {mi_family},
+                <em>{mi_genus}</em>, <em>{mi_species}</em>**")))
+    return(y)
+  }
+  genes <- update_title(genes)
+  domains <- update_title(domains)
+
+  gene_height <- 5
+  n_operon <- length(unique(genes$ID2))
+  operon_plot <- ggplot(
+      genes, aes(xmin = start, xmax = end, y = title, forward = strand)
+    ) +
+      # Empty gene arrows
+      geom_gene_arrow(
+        arrowhead_height = unit(gene_height, "mm"),
+        arrow_body_height = unit(gene_height, "mm"),
+        arrowhead_width = unit(5, "mm")
+      ) +
+      # Colored gene arrows (match in psiblast)
+      geom_subgene_arrow(
+        data = genes,
+        mapping = aes(xmin = start, xmax = end, y = title,
+                      xsubmin = start_target_plot,
+                      xsubmax = end_target_plot,
+                      fill = Function,
+                      forward = strand
+        ),
+        arrowhead_height = unit(gene_height, "mm"),
+        arrow_body_height = unit(gene_height, "mm"),
+        arrowhead_width = unit(5, "mm")
+        #position = position_nudge(y = 0.3)
+      ) +
+
+      
+      facet_wrap(
+        ~ mi_phylum + mi_class + mi_order + mi_family + mi_genus + mi_species + title, 
+        scales = "free_y", 
+        ncol = 1
+      ) +
+      theme_genes() +
+      theme(
+        legend.position = "bottom",
+        legend.spacing.x = unit(6, "mm"),
+        legend.text = element_text(margin = margin(b  = -15)),
+        axis.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(), plot.margin = unit(c(0,0,0,0), "mm")
+      ) + 
+      scale_fill_brewer(palette = "Set3", na.value = "white") +
+      guides(
+        fill = guide_legend(
+          title = "Function of Matched Query Gene", 
+          nrow = 1, 
+          title.position = "top", 
+          title.hjust = 0.5, 
+          label.vjust = 1,
+          label.theme = element_text(size = 10),
+          keyheight = 0.9,
+          label.position = "bottom")
+      ) +
+      scale_x_continuous(expand = rep(max(genes$end, genes$start) * 0.0000003, 2))
+  if (article_plot_domain) {
+    ##---------------------------------------------------------------
+    ##            Article plotting with domain            
+    ##---------------------------------------------------------------
+    operon_plot <- operon_plot + 
+      # Domains boxes
+      geom_text(
+        data = genes %>% mutate(start = (start + end)/2),
+        mapping = aes(x = start, label = Query_label),
+        size = 4.5,
+        nudge_y = -0.25, 
+        angle = 0,
+        hjust = 0.5
+      ) +
+      geom_richtext(
+        data = genes %>% group_by(operon) %>% slice(1),
+        mapping = aes(x = 0, label = title),
+        size = 4,
+        nudge_y = 0.45,
+        hjust = 0,
+        fill = NA, label.color = NA
+      ) +
+      geom_gene_arrow(
+        data = domains,
+        mapping = aes(
+          xmin = start2,
+          xmax = end2,
+          y = title,
+          forward = strand,
+          fill = Function
+        ),
+        arrowhead_height = unit(gene_height - 2.5, "mm"),
+        arrow_body_height = unit(gene_height - 2.5, "mm"),
+        arrowhead_width = unit(0, "mm"),
+        position = position_nudge(y = +0.22)
+      ) +
+      geom_text(
+        data = domains %>% mutate(start = (start2 + end2) / 2),
+        aes(x = start, label = Domain,  y = title),
+        nudge_y = +0.22,
+        size = 1.6,
+        angle = 0
+      )
+    
+    ggsave(
+      plot = operon_plot,
+      glue("./figures/operon_article/operon_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
+      width = unit(13, "mm"),
+      height = unit(1 * n_operon + 1, "mm"),
+      limitsize = FALSE)
+    
+    
+  } else{
+    operon_plot <- operon_plot + 
+    geom_text(
+      data = genes %>% mutate(start = (start + end)/2),
+      mapping = aes(x = start, label = Query_label),
+      size = 4.5,
+      nudge_y = -0.31, 
+      angle = 0,
+      hjust = 0.5
+    ) +
+      geom_richtext(
+        data = genes %>% group_by(operon) %>% slice(1),
+        mapping = aes(x = 0, label = title),
+        size = 4,
+        nudge_y = 0.33,
+        hjust = 0,
+        fill = NA, label.color = NA
+      )
+    ggsave(
+      plot = operon_plot,
+      glue("./figures/operon_article/operon_", paste(filename_psiblast, collapse = "_"), "{name_addon}.pdf"), 
+      width = unit(13, "mm"),
+      height = unit(0.9 * n_operon + 1, "mm"),
+      limitsize = FALSE)
+  }
+}
 }
 
 

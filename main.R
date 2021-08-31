@@ -120,10 +120,10 @@ plot_operon("HA_Pasteurella")
 plot_operon("HA_streptococcus")
 
 
-source("./scripts/plot_operon_article.R")
 
-plot_operon_article(
+plot_operon(
   "alginate",
+  article = TRUE,
   query_title = "Query, 
                 Proteobacteria, Gammaproteobacteria, 
                 Pseudomonadales, Pseudomonadaceae, 
@@ -131,8 +131,9 @@ plot_operon_article(
   mags = c("Aved_18−Q3−R54−62_MAXAC.392",
            "Rand_18−Q3−R56−63_BAT3C.326"))
 #plot_operon_article("psl")
-plot_operon_article(
+plot_operon(
   "pel_merged",
+  article = TRUE,
   query_title = "Query, 
                 Proteobacteria, Gammaproteobacteria, 
                 Pseudomonadales, Pseudomonadaceae, 
@@ -141,8 +142,10 @@ plot_operon_article(
            "Hade_18−Q3−R52−61_BATAC.311",
            "Kalu_18−Q3−R12−55_BATAC.288",
            "Aved_18−Q3−R54−62_BAT3C.540"))
-plot_operon_article(
+plot_operon(
   "cellulose1", 
+  article = TRUE,
+  article_plot_domain = TRUE,
   query_title = "Query, 
                 Proteobacteria, Alphaproteobacteria, 
                 Rhodospirillales, Acetobacteraceae, 
@@ -158,8 +161,9 @@ plot_operon_article(
 #plot_operon_article("succinoglycan")
 #plot_operon_article("xanthan")
 #plot_operon_article("curdlan")
-plot_operon_article(
+plot_operon(
   "pnag_pga",
+  article = TRUE,
   query_title = "Query,
                 Proteobacteria,
                 Gammaproteobacteria,
@@ -174,8 +178,9 @@ plot_operon_article(
 #plot_operon_article("diutan")
 ## plot_oper_articleon("gellan")
 #plot_operon_article("S88")
-plot_operon_article(
+plot_operon(
   "NulO_merged",
+  article = TRUE,
   mags = c("EsbW_18−Q3−R4−48_MAXAC.279_cln",
            "Ega_18−Q3−R5−49_MAXAC.062",
            "EsbW_18−Q3−R4−48_MAXAC.012",

@@ -176,9 +176,10 @@ proximity_filtration <- function(filename_psiblast,
   ##  Export fasta files of identified genes, with surrounding genes  
   ##------------------------------------------------------------------
   message(glue("Saving FASTA files of genes in expanded operons ({filename_psiblast_col})"))
-  for (f in unique(psi_operon_full$ID)){
+  for (f in unique(psi_operon_full$ID2)){
     dir.create(glue("./data/processed/fasta_output/{filename_psiblast_col}"), showWarnings = FALSE, recursive = TRUE)
-    read.fasta(file = glue("./data/raw/MGP1000_HQMAG1083_prot_db_split/{f}.faa"), 
+    g <- unique(filter(psi_operon_full, ID2 == f)$ID)
+    read.fasta(file = glue("./data/raw/MGP1000_HQMAG1083_prot_db_split/{g}.faa"), 
                             seqtype="AA", 
                             as.string=TRUE, 
                             set.attributes=FALSE) %>% 

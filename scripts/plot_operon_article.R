@@ -12,7 +12,6 @@ setwd(here())
 dir.create("./figures/operon_article", showWarnings = F)
 
 
-query_title_test <- 
 plot_operon_article <-  function(filename_psiblast,
                                  name_addon = "", 
                                  query_title = "Query",
@@ -40,7 +39,10 @@ plot_operon_article <-  function(filename_psiblast,
       mutate(
         MiDAS3_6Tax = str_remove_all(MiDAS3_6Tax, ".[\\:\\;]")
       ) %>% 
-      separate(MiDAS3_6Tax, into = c("mi_domain","mi_phylum", "mi_class", "mi_order", "mi_family", "mi_genus", "mi_species"), sep = ",") %>% 
+      separate(
+        MiDAS3_6Tax, 
+        into = c("mi_domain","mi_phylum", "mi_class", "mi_order", "mi_family", "mi_genus", "mi_species"), 
+        sep = ",") %>% 
       distinct() %>% 
       right_join(data) %>% 
       mutate(
@@ -193,7 +195,7 @@ plot_operon_article <-  function(filename_psiblast,
       guides(alpha = guide_legend(override.aes = list(fill = "black"))) +
       theme_genes() +
       theme(
-       legend.position = "top",
+       legend.position = "bottom",
        legend.spacing.x = unit(6, "mm"),
        legend.text = element_text(margin = margin(b  = -15)),
        axis.text.y = element_blank(),
