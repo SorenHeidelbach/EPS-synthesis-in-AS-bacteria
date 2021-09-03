@@ -1,11 +1,10 @@
 library("data.table")
 library("tidyverse")
-library("here")
 library("gggenes")
 library("ggtext")
 library("glue")
 library("readxl")
-setwd(here())
+setwd(here::here())
 
 
 # Create dir for figure
@@ -17,9 +16,11 @@ plot_operon <-  function(filename_psiblast,
                          query_title = "Query",
                          article = FALSE,
                          article_plot_domain = FALSE,
+                         domain_label_remove = FALSE,
+                         domain_label_trim =FALSE,
                          mags = "all"){
 ##---------------------------------------------------------------
-##      Parameter deifinition (must be same as in filtration)
+##      Parameter deifinition
 ##---------------------------------------------------------------
 # The name of the .txt files
 filename_psiblast_col <- paste(filename_psiblast, collapse = "_")
@@ -34,7 +35,26 @@ query_metadata. <- excel_sheets("./data/raw/Query_figur.xlsx") %>%
   sapply(function(X) read_xlsx("./data/raw/Query_figur.xlsx", sheet = X, skip = 1), USE.NAMES = T) %>% 
   lapply(as.data.frame) %>% 
   `[`(!(names(.) %in% c("Abbreveations", "HA_S_pyogenes"))) %>%
-  rbindlist() 
+  rbindlist()  %>% 
+  mutate(
+    Function = str_replace(Function, "MOD", "Modification"),
+    Function = str_replace(Function, "PE", "Polymerization & Export"),
+    Function = str_replace(Function, "GT", "Glycosyl Transferase"),
+    Function = str_replace(Function, "ABC", "ABC transporter"),
+    Function = str_replace(Function, "SY", "Synthase"),
+    Function = str_replace(Function, "PS", "Precourser Synthesis"),
+    Function = str_replace(Function, "REG", "Regulatory")
+  )
+
+# colors in the "Function" legend 
+function_colors <- c("#c4a78b", "#944c2e", "#fbbb81",
+                     "#305b46", "#fbc669", "#db6447",
+                     "#e5e4b8", "#b3b887", "#ffe892", 
+                     "#e4fbe2", "#c3dbce", "#89b5b0", 
+                     "#425985", "#403675")
+# print query_metadata.$Function %>% unique() to see order
+names(function_colors) <- query_metadata.$Function %>% unique()
+
 ##---------------------------------------------------------------
 ##  Loading interproscan data and merging with psiblast operons  
 ##---------------------------------------------------------------
@@ -51,33 +71,38 @@ clean_gff3 <- function(df){
     distinct() %>%
     # Formating of domain names (a bit of confusing regular expressions)
     mutate(
-      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT f"),
-      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT g"),
-      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like f"),
-      Domain = str_replace(Domain, "[gG]lycosyl.*transferase", "GT"),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[fF]amily ", "GT family "),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.*[gG]roup ", "GT group "),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase.[lL]ike.[fF]amily", "GT like family "),
+      Domain = str_replace(Domain, "[gG]lycosyl.*transferase", "GT "),
       Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase.*[fF]amily " , "GH"),
       Domain = str_replace(Domain, "[gG]lycosyl [hH]ydrolase" , "GH"),
       Domain = str_replace(Domain, ".*[cC]ellulose.*synth.*protein[^' ']*" , "CS "),
       Domain = str_replace(Domain, ".*[cC]ellulose.*synth[^' ']*", "CS "),
-      Domain = str_replace(Domain, " N.terminal domain" , "_N"),
-      Domain = str_replace(Domain, " C.terminal domain" , "_C"),
-      Domain = str_replace(Domain, ".*BCSC_C.*", "bcsC"),
-      Domain = str_replace(Domain, "[iI]nitation [fF]actor" , "IF"),
-      Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
+      Domain = str_replace(Domain, " N.terminal domain" , " N terminal"),
+      Domain = str_replace(Domain, " C.terminal domain" , " C terminal"),
+      Domain = str_replace(Domain, ".*BCSC_C.*", "BcsC"),
+      Domain = str_replace(Domain, ".*GIL.*", "BcsE"),
+      Domain = str_replace(Domain, ".*subunit D.*", "BcsD"),
+      
+      Domain = str_replace(Domain, ".*complementing protein A.*", "ccpA"),
+      
+      # Domain = str_replace(Domain, "[iI]nitation [fF]actor" , "IF"),
+      # Domain = str_replace(Domain, "[eE]longation [fF]actor" , "EF"),
       Domain = str_replace(Domain, ".*Tetratrico.*|.*TPR.*", "T"),
       Domain = str_replace(Domain, ".*[dD]omain of unknown function.*", "NA"),
-      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain II", "PGM_PMM_II"),
-      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain I", "PGM_PMM_I"),
-      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain III", "PGM_PMM_III"),
-      Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase,_C", "PGM_PMM_IV"),
-      Domain = str_replace(Domain, "RTX calcium-binding nonapeptide repeat.*", "Hemolysn_Ca-bd"),
-      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, UDP binding domain", "UDPG_MGDP_dh_C"),
-      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, central domain", "UDP-Glc/GDP-Man_DH_dimer"),
-      Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, NAD binding domain", "UDPG_MGDP_dh_N"),
-      Domain = str_replace(Domain, "SGNH hydrolase-like domain, acetyltransferase AlgX", "ALGX/ALGJ_SGNH-like"),
-      Domain = str_replace(Domain, "MBOAT, membrane-bound O-acyltransferase family", "MBOAT_fam"),
-      Domain = str_replace(Domain, "Periplasmic copper-binding protein.*", "NosD_dom"),
-      Domain = str_replace(Domain, "UDP-N-acetylglucosamine 2-epimerase", "UDP-GlcNAc_Epase")
+      # Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain II", "PGM_PMM_II"),
+      # Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain I", "PGM_PMM_I"),
+      # Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase, alpha/beta/alpha domain III", "PGM_PMM_III"),
+      # Domain = str_replace(Domain, "Phosphoglucomutase/phosphomannomutase,_C", "PGM_PMM_IV"),
+      # Domain = str_replace(Domain, "RTX calcium-binding nonapeptide repeat.*", "Hemolysn_Ca-bd"),
+      # Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, UDP binding domain", "UDPG_MGDP_dh_C"),
+      # Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, central domain", "UDP-Glc/GDP-Man_DH_dimer"),
+      # Domain = str_replace(Domain, "UDP-glucose/GDP-mannose dehydrogenase family, NAD binding domain", "UDPG_MGDP_dh_N"),
+      # Domain = str_replace(Domain, "SGNH hydrolase-like domain, acetyltransferase AlgX", "ALGX/ALGJ_SGNH-like"),
+      # Domain = str_replace(Domain, "MBOAT, membrane-bound O-acyltransferase family", "MBOAT_fam"),
+      # Domain = str_replace(Domain, "Periplasmic copper-binding protein.*", "NosD_dom"),
+      # Domain = str_replace(Domain, "UDP-N-acetylglucosamine 2-epimerase", "UDP-GlcNAc_Epase")
       
     ) 
 }
@@ -183,7 +208,6 @@ genes <- genes %>%
     end_target_plot = ifelse(reverse, 2*operon_middle - end_target_plot, end_target_plot) - min_operon,
     end = end - min_operon,
     start = start - min_operon
-    #strand = ifelse(reverse, strand, strand)
   ) %>% 
   select(-reverse, -operon_middle)
 
@@ -191,15 +215,19 @@ domains <- domains %>%
   group_by(operon) %>% 
   mutate(
     reverse = operon %in% operon_reversed,
+    # Reverse direction of matched gene, same as above
     operon_middle = (min(c(start, end)) + max(c(start, end)))/2,
     start = ifelse(reverse, 2*operon_middle - start, start),
     end = ifelse(reverse, 2*operon_middle - end, end),
+    # Defining minimum in operon to ensure all start at 0
     min_operon = min(c(start, end)),
     gene_middle = (start + end)/2,
-    start2 = ifelse(reverse, 2*operon_middle - start2, start2) -min_operon,
-    start2 = ifelse(reverse, 2*gene_middle - start2, start2)-min_operon,
-    end2 = ifelse(reverse, 2*operon_middle - end2, end2)-min_operon,
-    end2 = ifelse(reverse, 2*gene_middle - end2, end2)-min_operon
+    # Reverse direction in operon
+    start2 = ifelse(reverse, 2*operon_middle - start2, start2) - min_operon,
+    end2 = ifelse(reverse, 2*operon_middle - end2, end2) - min_operon,
+    # Reverse direction in gene
+    start2 = ifelse(reverse, 2*gene_middle - start2, start2) - min_operon,
+    end2 = ifelse(reverse, 2*gene_middle - end2, end2) - min_operon
     
     #strand = ifelse(reverse, strand, strand)
   ) %>% 
@@ -270,6 +298,18 @@ domains <- read.table(
     Function = str_replace(Function, "PS", "Precourser Synthesis"),
     Function = str_replace(Function, "REG", "Regulatory")
   )
+##---------------------------------------------------------------
+##       Removing domain labels defined by remove_domain_label
+##---------------------------------------------------------------
+if (!is.logical(domain_label_remove)){
+  domains <- domains %>% 
+    mutate(
+      Domain = str_replace_all(Domain, paste(domain_label_remove, collapse = ".*|.*") %>% paste0(".*", ., ".*"), " ")
+    ) 
+}
+if (!is.logical(domain_label_trim)){
+  domains$Domain[grepl(paste(domain_label_trim, collapse = "|"), domains$Domain )] <- str_extract(domains$Domain, paste(domain_label_trim, collapse = "|")) %>% `[`(!is.na(.))
+}
 
 ##---------------------------------------------------------------
 ##            Plotting operons with domain annotation            
@@ -424,7 +464,9 @@ ggsave(
         axis.title.x = element_blank(),
         axis.title.y = element_blank(), plot.margin = unit(c(0,0,0,0), "mm")
       ) + 
-      scale_fill_brewer(palette = "Set3", na.value = "white") +
+      scale_fill_manual(
+        values = function_colors[names(function_colors) %in% unique(genes$Function)], 
+        na.value = "transparent") +
       guides(
         fill = guide_legend(
           title = "Function of Matched Query Gene", 

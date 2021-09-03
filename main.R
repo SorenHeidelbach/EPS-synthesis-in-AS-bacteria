@@ -146,17 +146,27 @@ plot_operon(
   "cellulose1", 
   article = TRUE,
   article_plot_domain = TRUE,
-  query_title = "Query, 
-                Proteobacteria, Alphaproteobacteria, 
-                Rhodospirillales, Acetobacteraceae, 
-                <em>Komagataeibacter</em>, <em>xylinus</em>",
-  mags = c("Hjor_18−Q3−R7−51_BAT3C.155",
-           "Kalu_18−Q3−R12−55_BAT3C.261",
-           "Skiv_18−Q3−R9−52_BATAC.396",
-           "Aved_18−Q3−R54−62_BAT3C.394",
-           "Hade_18−Q3−R52−61_BATAC.364",
-           "EsbW_18−Q3−R4−48_BATAC.453",
-           "OdNE_18−Q3−R46−58_BATAC.187"))
+  query_title = 
+  "Query,
+  Proteobacteria, Alphaproteobacteria,
+  Rhodospirillales, Acetobacteraceae, 
+  <em>Komagataeibacter</em>, <em>xylinus</em>",
+  mags = c(
+    "Hjor_18−Q3−R7−51_BAT3C.155",
+    "Kalu_18−Q3−R12−55_BAT3C.261",
+    "Skiv_18−Q3−R9−52_BATAC.396",
+    "Aved_18−Q3−R54−62_BAT3C.394",
+    "Hade_18−Q3−R52−61_BATAC.364",
+    "EsbW_18−Q3−R4−48_BATAC.453",
+    "OdNE_18−Q3−R46−58_BATAC.187"),
+  domain_label_remove = c(
+    "M40", "Aminotrans", "Facilitator Superfamily", 
+    "phosphate dehydratase", "synthetase A protein",
+    "dimerisation domain", "Histidine", "PLD−like", 
+    "danese−like domain", "nal regulator", "helix domain"),
+  domain_label_trim = c(
+    "BcsQ" , "BcsN", "BcsG", "PilZ"
+  ))
 #plot_operon_article("cellulose2")
 #plot_operon_article("succinoglycan")
 #plot_operon_article("xanthan")
@@ -164,6 +174,7 @@ plot_operon(
 plot_operon(
   "pnag_pga",
   article = TRUE,
+  article_plot_domain = TRUE,
   query_title = "Query,
                 Proteobacteria,
                 Gammaproteobacteria,
@@ -171,8 +182,16 @@ plot_operon(
                 Enterobacteriaceae,
                 <em>Escherichia</em>,
                 <em>coli</em>",
-  mags = c("Kalu_18−Q3−R12−55_BAT3C.208",
-           "OdNE_18−Q3−R46−58_BAT3C.415"))
+  mags = c(
+    "Kalu_18−Q3−R12−55_BAT3C.208",
+    "OdNE_18−Q3−R46−58_BAT3C.415"),
+  domain_label_trim = c(
+    "PgaD"
+  ),
+  domain_label_remove = c(
+    "integral", "Aldolase", "Sulfate", "STAS", "conserved in bacteria", "AAA",
+    "Enoyl", "nuclease", "PLD"
+  ))
 #plot_operon_article("pnag_ica")
 #plot_operon_article("pnag_eps")
 #plot_operon_article("diutan")
